@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HighWater 3D — Engineering Hydro-Terrain & Geographic Viewer (Dernau)</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/styles/main.css" />
+  </head>
+  <body>
+    <!-- App Shell -->
+    <div id="app" class="app-shell">
+      <!-- Top Navigation & Header Bar -->
+      <header class="top-bar">
+        <div class="brand-section">
+          <div class="brand-logo">
+            <span class="logo-icon">🌊</span>
+            <div class="brand-text">
+              <span class="brand-title">HIGHWATER 3D</span>
+              <span class="brand-subtitle">HYDRO-ENGINEERING GEOGRAPHIC VIEWER</span>
+            </div>
+          </div>
+          <span class="version-badge">v0.8.0-M8</span>
+        </div>
+
+        <div class="geo-context-bar">
+          <div class="geo-item">
+            <span class="label">STUDY AREA</span>
+            <span class="val">Dernau, Ahr Valley (DE)</span>
+          </div>
+          <div class="geo-divider"></div>
+          <div class="geo-item">
+            <span class="label">COORDINATES</span>
+            <span class="val font-mono">50.516°N, 7.042°E</span>
+          </div>
+          <div class="geo-divider"></div>
+          <div class="geo-item">
+            <span class="label">CRS / PROJECTION</span>
+            <span class="val font-mono">EPSG:32632 (UTM 32N)</span>
+          </div>
+          <div class="geo-divider"></div>
+          <div class="geo-item">
+            <span class="label">DATASETS</span>
+            <span class="val font-mono">DGM1 DEM · 759 Bldgs · 117 Roads</span>
+          </div>
+        </div>
+
+        <div class="provenance-section">
+          <div
+            class="provenance-badge real-dem-badge"
+            id="provenance-badge"
+            title="Official Rhineland-Palatinate DGM1 bare-earth LiDAR terrain model (DHHN2016, 1m resolution)."
+          >
+            <span class="indicator-dot success"></span>
+            <span class="badge-text" id="provenance-badge-text">TERRAIN: LVermGeo RLP DGM1 (REAL DEM)</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Workspace: 3D Viewport with HUD Overlays -->
+      <main class="viewport-wrapper">
+        <!-- 3D Canvas Mount Point -->
+        <div id="viewport-container" class="viewport-canvas"></div>
+
+        <!-- Provenance Ribbon for Real DEM Terrain -->
+        <div class="data-notice-banner provenance-banner" id="data-notice">
+          <span class="notice-icon">✓</span>
+          <span class="notice-text">
+            <strong>VERIFIED REAL DEM:</strong> Active 3D terrain derived from official Rhineland-Palatinate DGM1 bare-earth LiDAR data (1m resolution, DHHN2016 physical heights, ©GeoBasis-DE / LVermGeoRP 2024/2025, dl-de/by-2-0). Overlays represent historical survey data.
+          </span>
+          <button class="notice-close" id="btn-close-notice" title="Dismiss notice">✕</button>
+        </div>
+
+        <!-- Telemetry & Camera HUD (Top Left) -->
+        <div class="hud-panel hud-telemetry">
+          <div class="panel-header">
+            <span class="panel-title">VIEWPORT TELEMETRY</span>
+            <span class="hud-tag" id="fps-counter">60 FPS</span>
+          </div>
+          <div class="telemetry-grid font-mono">
+            <div class="telem-row">
+              <span class="t-label">CAM POS (X, Y, Z):</span>
+              <span class="t-val" id="cam-pos">0m, 850m, 1350m</span>
+            </div>
+            <div class="telem-row">
+              <span class="t-label">TARGET (X, Y, Z):</span>
+              <span class="t-val" id="target-pos">0m, 140m, 0m</span>
+            </div>
+            <div class="telem-row">
+              <span class="t-label">CAM ALTITUDE:</span>
+              <span class="t-val" id="cam-alt">850.0 m</span>
+            </div>
+            <div class="telem-row">
+              <span class="t-label">PITCH / YAW:</span>
+              <span class="t-val" id="cam-angles">-32.4° / 0.0°</span>
+            </div>
+            <div class="telem-row">
+              <span class="t-label">CURSOR SURFACE:</span>
+              <span class="t-val highlight" id="cursor-pos">Hovering over terrain...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature Inspection HUD (Top Right) -->
+        <div class="hud-panel hud-inspector" id="hud-inspector">
+          <div class="panel-header">
+            <span class="panel-title">FEATURE INSPECTOR</span>
+            <span class="status-pill info" id="inspect-tag">HOVER OVER OBJECT</span>
+          </div>
+          <div class="inspector-content" id="inspect-content">
+            <p class="inspect-placeholder font-mono text-muted">
+              Hover over a 3D building, road segment, or emergency facility pin to inspect verified attributes.
+            </p>
+          </div>
+          <!-- Inundation Depth & Access Legend (Milestone 6 & 7) -->
+          <div class="hud-legend font-mono" id="hud-legend">
+            <div class="legend-row">
+              <span class="legend-title">DEPTH:</span>
+              <span class="legend-chip chip-dry" title="Ground elevation above local water level">■ Dry (0m)</span>
+              <span class="legend-chip chip-shallow" title="Water depth < 0.50m at building base">■ &lt;0.5m</span>
+              <span class="legend-chip chip-mod" title="Water depth 0.50m - 1.50m at building base">■ 0.5–1.5m</span>
+              <span class="legend-chip chip-deep" title="Water depth >= 1.50m at building base">■ &ge;1.5m</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-title">ACCESS:</span>
+              <span class="legend-chip chip-passable chip-road-clear" title="Dry passable road segment">■ Clear</span>
+              <span class="legend-chip chip-submerged chip-road-submerged" title="Submerged impassable road">■ Impassable</span>
+              <span class="legend-chip chip-shelter-ok chip-fac-ok" title="Operational shelter with dry local road access">■ Shelter OK</span>
+              <span class="legend-chip chip-shelter-iso chip-fac-isolated" title="Isolated shelter with cut-off access roads">■ Isolated</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Render Diagnostics HUD (Bottom Left) -->
+        <div class="hud-panel hud-diagnostics font-mono">
+          <div class="diag-item">
+            <span class="d-key">DRAW CALLS:</span>
+            <span class="d-val" id="diag-draw-calls">1</span>
+          </div>
+          <div class="diag-item">
+            <span class="d-key">TRIANGLES:</span>
+            <span class="d-val" id="diag-triangles">32,258</span>
+          </div>
+          <div class="diag-item">
+            <span class="d-key">FRAME TIME:</span>
+            <span class="d-val" id="diag-frame-time">16.6 ms</span>
+          </div>
+        </div>
+
+        <!-- Compass & Coordinate Reference Overlay (Bottom Right) -->
+        <div class="hud-compass-widget">
+          <div class="compass-disc" id="compass-disc">
+            <span class="compass-n">N</span>
+            <span class="compass-e">E</span>
+            <span class="compass-s">S</span>
+            <span class="compass-w">W</span>
+            <div class="compass-needle" id="compass-needle"></div>
+          </div>
+          <div class="scale-bar font-mono">
+            <div class="scale-ruler"></div>
+            <span class="scale-label">500 m</span>
+          </div>
+        </div>
+      </main>
+
+      <!-- Bottom Control Dock: Engineering GIS Tools & Layer Toggles -->
+      <footer class="bottom-dock">
+        <!-- Left Panel: Geographic Layers & Camera Presets -->
+        <div class="dock-panel-left">
+          <div class="dock-subgroup">
+            <span class="dock-subgroup-title">LAYERS</span>
+            <div class="dock-buttons">
+              <button class="dock-btn active" id="btn-toggle-blds" title="Toggle 759 building footprints (SpaceNet 8 dataset)">
+                <span class="btn-dot bld-dot"></span>
+                <span>Bldgs (759)</span>
+              </button>
+              <button class="dock-btn active" id="btn-toggle-roads" title="Toggle 117 road segments (SpaceNet 8 dataset)">
+                <span class="btn-dot road-dot"></span>
+                <span>Roads (117)</span>
+              </button>
+              <button class="dock-btn active" id="btn-toggle-facs" title="Toggle 6 emergency response facilities & shelters">
+                <span class="btn-dot fac-dot"></span>
+                <span>Shelters (6)</span>
+              </button>
+              <button class="dock-btn active" id="btn-toggle-flood" title="Toggle July 2021 historical flood reference extent (196 polygons)">
+                <span class="btn-dot flood-dot"></span>
+                <span>Ref Flood</span>
+              </button>
+              <button class="dock-btn active" id="btn-toggle-water" title="Toggle simulated terrain-aware water surface layer">
+                <span class="btn-dot water-dot"></span>
+                <span>Sim Water</span>
+              </button>
+            </div>
+          </div>
+          <div class="dock-subgroup">
+            <span class="dock-subgroup-title">VIEWPORT</span>
+            <div class="dock-buttons">
+              <button class="dock-btn" id="btn-view-iso" title="Perspective 3D Orbit View">
+                <span>3D Orbit</span>
+              </button>
+              <button class="dock-btn" id="btn-view-top" title="Top-down 2D Plan View">
+                <span>Top-Down</span>
+              </button>
+              <button class="dock-btn" id="btn-reset-cam" title="Reset Camera to default perspective">
+                <span>⟲ Reset</span>
+              </button>
+              <button class="dock-btn active" id="btn-toggle-grid" title="Toggle metric spatial reference grid">
+                <span>🌐 Grid</span>
+              </button>
+              <button class="dock-btn" id="btn-toggle-wireframe" title="Toggle terrain wireframe mesh">
+                <span>📐 Wire</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Panel: Simulation Stage & Impact Analysis -->
+        <div class="dock-panel-right water-control-group">
+          <div class="dock-group-header">
+            <div class="water-title-wrap">
+              <span class="dock-group-title">TERRAIN-AWARE FLOOD IMPACT</span>
+              <span class="water-disclaimer-tag" title="Conceptual DEM-based elevation threshold model; not a calibrated hydrodynamic simulation">
+                CONCEPTUAL (NOT FORECAST)
+              </span>
+            </div>
+            <div class="impact-counter-badge font-mono" id="impact-badge" title="Dynamic feature exposure calculated for current water surface elevation">
+              <span class="impact-label">INUNDATION IMPACT:</span>
+              <span class="impact-values" id="impact-stats-text">0 / 759 Bld | 0 / 117 Rds | 0 / 6 Fac</span>
+            </div>
+          </div>
+
+          <div class="water-slider-row">
+            <span class="slider-label font-mono">WATER ELEV:</span>
+            <input
+              type="range"
+              class="water-slider"
+              id="water-level-slider"
+              min="120.0"
+              max="155.0"
+              step="0.25"
+              value="124.0"
+              title="Adjust water surface elevation in meters above DHHN2016 datum (120.0m - 155.0m)"
+            />
+            <span class="water-readout font-mono" id="water-level-val">124.00 m</span>
+            <div class="water-btn-group">
+              <button class="sim-btn font-mono" id="btn-water-play" title="Gradually raise water level (+1.5 m/s)">▶ Rise</button>
+              <button class="sim-btn font-mono" id="btn-water-reset" title="Reset water level to baseline river stage (124.0m)">⏮ Reset</button>
+              <button class="sim-btn font-mono active" id="btn-toggle-connectivity" title="Toggle river thalweg connected flood fill vs unconstrained elevation slicing">🌊 Connected: ON</button>
+              <button class="sim-btn font-mono" id="btn-toggle-profile" title="Toggle between Planar (horizontal) and Slope-Aware (valley thalweg gradient) water profile">📐 Profile: Planar</button>
+              <button class="sim-btn font-mono active" id="btn-toggle-depth" title="Toggle dynamic building depth color shading vs historical SpaceNet 8 status">🎨 Depth: ON</button>
+              <button class="sim-btn font-mono active" id="btn-toggle-passability" title="Toggle dynamic road passability color classification vs historical SpaceNet 8 status">🛣️ Passability: ON</button>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      <!-- Initial Loading Screen -->
+      <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-box">
+          <div class="spinner"></div>
+          <h2 class="loading-title">HighWater 3D</h2>
+          <p class="loading-status" id="loading-status-text">Loading geographic overlays...</p>
+          <div class="loading-progress-bar">
+            <div class="progress-fill" id="loading-progress-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Error Modal -->
+      <div id="error-overlay" class="error-overlay hidden">
+        <div class="error-box">
+          <div class="error-icon">❌</div>
+          <h2 class="error-title">Application Error</h2>
+          <p class="error-msg" id="error-msg-text">Failed to load geographic assets.</p>
+          <button class="btn-error-retry" id="btn-error-retry">Reload Application</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Script Entry Point -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

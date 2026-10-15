@@ -1,0 +1,136 @@
+{
+  "source": "https://geobasis-rlp.de/data/dgm1/current/tif/",
+  "license": "dl-de/by-2-0",
+  "attribution": "\u00a9GeoBasis-DE / LVermGeoRP, dl-de/by-2-0, www.lvermgeo.rlp.de [Daten bearbeitet]",
+  "download_timestamp": "2026-10-15T07:34:29Z",
+  "tiles": [
+    {
+      "file": "dgm1_32_359_5597_1_rp_2025.tif",
+      "size_bytes": 1926346,
+      "etag": "1d64ca-6519b5a3302f1",
+      "sha256": "5b2f8c91f787d13eac7d1d3de702e05fc43bfa5513dffa1c961e0272af9714dd",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_359_5598_1_rp_2025.tif",
+      "size_bytes": 1898931,
+      "etag": "1cf9b3-6519c3bd3f2a3",
+      "sha256": "931bef5286c53babafa77bbe33b58cf7d7a30a51cddb65935569fea4c8464ce5",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_359_5599_1_rp_2025.tif",
+      "size_bytes": 1928150,
+      "etag": "1d6bd6-65199f2a0d449",
+      "sha256": "889aadd6ce320ce8d334bf13a4297010a8f9fa17476d02ec2b53e50e49698d48",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_360_5597_1_rp_2024.tif",
+      "size_bytes": 1852634,
+      "etag": "1c44da-65199edc183c2",
+      "sha256": "54eb6ca03b71784fffbb19deb9c40c9c920e384e2a929606471a23ba739e0fcb",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_360_5598_1_rp_2024.tif",
+      "size_bytes": 1996086,
+      "etag": "1e7536-6519aa50e1538",
+      "sha256": "d1dc3474d3883e198aa81a67698b8d30fd2bbd0ea83f6bc88f46292a9bd83c22",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_360_5599_1_rp_2024.tif",
+      "size_bytes": 1952392,
+      "etag": "1dca88-6519a05fc9443",
+      "sha256": "713a7da7f10b49248175c686f59a632ce31afb76b612d16eb9fe5c4e3487bef7",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_361_5597_1_rp_2024.tif",
+      "size_bytes": 1881606,
+      "etag": "1cb606-6519aef183f37",
+      "sha256": "9fd69bf0f26385eab0f41c02a6e6efd41ea8e0b8315aeaba6fba8e4e70f28179",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_361_5598_1_rp_2024.tif",
+      "size_bytes": 1953488,
+      "etag": "1dced0-65199f2d03149",
+      "sha256": "4dda9cf17f28535515865c7c80dc948332a7a7cf573996e1470f40ae3da802f1",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_361_5599_1_rp_2024.tif",
+      "size_bytes": 1808746,
+      "etag": "1b996a-6519c2f2a0102",
+      "sha256": "f5daaabbbcf671abf2f3d72eb94fe0cc15bbc6bf6a1d2f6f546069bf689ddade",
+      "status": "success"
+    }
+  ],
+  "tfw_files": [
+    {
+      "file": "dgm1_32_359_5597_1_rp_2025.tfw",
+      "size_bytes": 78,
+      "etag": "4e-653c714f8f7ca",
+      "sha256": "4da723d7c9916a2585ee3d618b984a65c153d5c09623668bdfabeb5a919aff6a",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_359_5598_1_rp_2025.tfw",
+      "size_bytes": 78,
+      "etag": "4e-653c5581da7c9",
+      "sha256": "2dd877e8892e7946b5c30c32fd7512de5ce40c203a0fe38d3a3de61bda3d0e39",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_359_5599_1_rp_2025.tfw",
+      "size_bytes": 78,
+      "etag": "4e-653c5f318688b",
+      "sha256": "7cdd4b4b390a54fac2f6a1ef6061a46a5bbde04a1e10f4e6b043368cef993efa",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_360_5597_1_rp_2024.tfw",
+      "size_bytes": 78,
+      "etag": "4e-653c44d7fae55",
+      "sha256": "bcf6b564bbc342552216be0ff7533a73307d3bf74965e5bf1a99195b9bac8842",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_360_5598_1_rp_2024.tfw",
+      "size_bytes": 78,
+      "etag": "4e-653c49a697103",
+      "sha256": "9f668c02cf8b53d32781790ea52211b7dda2f40896117034fe8138eec47e5c0a",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_360_5599_1_rp_2024.tfw",
+      "size_bytes": 78,
+      "etag": "4e-653d8831216f2",
+      "sha256": "ad8ea2385d920d72052abc135b3eed39a2ef716b9d3159b89658ebfc2162d94c",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_361_5597_1_rp_2024.tfw",
+      "size_bytes": 78,
+      "etag": "4e-653d88f65caa1",
+      "sha256": "9d3345e4a5b227aa9d39ecb2ee7b11c38cfa4ee7573598bd0100744657152c18",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_361_5598_1_rp_2024.tfw",
+      "size_bytes": 78,
+      "etag": "4e-653c5fca0b76c",
+      "sha256": "cecc461cb02ea9933d8eff5131002a83f5e26dd3902389e17c60e3400ddca549",
+      "status": "success"
+    },
+    {
+      "file": "dgm1_32_361_5599_1_rp_2024.tfw",
+      "size_bytes": 78,
+      "etag": "4e-653c5e0506c8a",
+      "sha256": "5cf2e0eb54f62c2dbff986c47896a82648161068b898d07e7a936a4215cee1a1",
+      "status": "success"
+    }
+  ]
+}

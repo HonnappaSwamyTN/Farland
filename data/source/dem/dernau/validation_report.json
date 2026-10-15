@@ -1,0 +1,302 @@
+{
+  "validation_passed": true,
+  "mosaic_bounds_utm": [
+    359000.0,
+    5597000.0,
+    362000.0,
+    5600000.0
+  ],
+  "mosaic_dimensions_meters": [
+    3000.0,
+    3000.0
+  ],
+  "overall_elevation_stats": {
+    "min_meters": 117.97,
+    "max_meters": 439.86,
+    "mean_meters": 221.271,
+    "total_pixels": 9000000,
+    "valid_pixels": 9000000,
+    "nodata_pixels": 0
+  },
+  "tiles": [
+    {
+      "tile": "dgm1_32_359_5597_1_rp_2025.tif",
+      "file_size_bytes": 1926346,
+      "crs_epsg": null,
+      "crs_name": "ETRS89 / UTM zone 32N + DHHN2016 height",
+      "width": 1000,
+      "height": 1000,
+      "bands": 1,
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "res_x": 1.0,
+      "res_y": 1.0,
+      "bounds": [
+        359000.0,
+        5597000.0,
+        360000.0,
+        5598000.0
+      ],
+      "valid_pixels": 1000000,
+      "nodata_pixels": 0,
+      "nan_pixels": 0,
+      "elev_min": 135.72,
+      "elev_max": 418.44,
+      "elev_mean": 230.691,
+      "elev_std": 79.793,
+      "tags": {
+        "TIFFTAG_SOFTWARE": "LAStools is a product of rapidlasso GmbH, Germany",
+        "TIFFTAG_ARTIST": "created by LAStools (c) info@rapidlasso.de",
+        "AREA_OR_POINT": "Area"
+      }
+    },
+    {
+      "tile": "dgm1_32_359_5598_1_rp_2025.tif",
+      "file_size_bytes": 1898931,
+      "crs_epsg": null,
+      "crs_name": "ETRS89 / UTM zone 32N + DHHN2016 height",
+      "width": 1000,
+      "height": 1000,
+      "bands": 1,
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "res_x": 1.0,
+      "res_y": 1.0,
+      "bounds": [
+        359000.0,
+        5598000.0,
+        360000.0,
+        5599000.0
+      ],
+      "valid_pixels": 1000000,
+      "nodata_pixels": 0,
+      "nan_pixels": 0,
+      "elev_min": 132.73,
+      "elev_max": 311.97,
+      "elev_mean": 169.1,
+      "elev_std": 34.84,
+      "tags": {
+        "TIFFTAG_SOFTWARE": "LAStools is a product of rapidlasso GmbH, Germany",
+        "TIFFTAG_ARTIST": "created by LAStools (c) info@rapidlasso.de",
+        "AREA_OR_POINT": "Area"
+      }
+    },
+    {
+      "tile": "dgm1_32_359_5599_1_rp_2025.tif",
+      "file_size_bytes": 1928150,
+      "crs_epsg": null,
+      "crs_name": "ETRS89 / UTM zone 32N + DHHN2016 height",
+      "width": 1000,
+      "height": 1000,
+      "bands": 1,
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "res_x": 1.0,
+      "res_y": 1.0,
+      "bounds": [
+        359000.0,
+        5599000.0,
+        360000.0,
+        5600000.0
+      ],
+      "valid_pixels": 1000000,
+      "nodata_pixels": 0,
+      "nan_pixels": 0,
+      "elev_min": 150.97,
+      "elev_max": 355.42,
+      "elev_mean": 273.649,
+      "elev_std": 48.194,
+      "tags": {
+        "TIFFTAG_SOFTWARE": "LAStools is a product of rapidlasso GmbH, Germany",
+        "TIFFTAG_ARTIST": "created by LAStools (c) info@rapidlasso.de",
+        "AREA_OR_POINT": "Area"
+      }
+    },
+    {
+      "tile": "dgm1_32_360_5597_1_rp_2024.tif",
+      "file_size_bytes": 1852634,
+      "crs_epsg": null,
+      "crs_name": "ETRS89 / UTM zone 32N + DHHN2016 height",
+      "width": 1000,
+      "height": 1000,
+      "bands": 1,
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "res_x": 1.0,
+      "res_y": 1.0,
+      "bounds": [
+        360000.0,
+        5597000.0,
+        361000.0,
+        5598000.0
+      ],
+      "valid_pixels": 1000000,
+      "nodata_pixels": 0,
+      "nan_pixels": 0,
+      "elev_min": 126.92,
+      "elev_max": 353.25,
+      "elev_mean": 183.845,
+      "elev_std": 54.283,
+      "tags": {
+        "TIFFTAG_SOFTWARE": "LAStools is a product of rapidlasso GmbH, Germany",
+        "TIFFTAG_ARTIST": "created by LAStools (c) info@rapidlasso.de",
+        "AREA_OR_POINT": "Area"
+      }
+    },
+    {
+      "tile": "dgm1_32_360_5598_1_rp_2024.tif",
+      "file_size_bytes": 1996086,
+      "crs_epsg": null,
+      "crs_name": "ETRS89 / UTM zone 32N + DHHN2016 height",
+      "width": 1000,
+      "height": 1000,
+      "bands": 1,
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "res_x": 1.0,
+      "res_y": 1.0,
+      "bounds": [
+        360000.0,
+        5598000.0,
+        361000.0,
+        5599000.0
+      ],
+      "valid_pixels": 1000000,
+      "nodata_pixels": 0,
+      "nan_pixels": 0,
+      "elev_min": 125.17,
+      "elev_max": 350.66,
+      "elev_mean": 215.308,
+      "elev_std": 68.501,
+      "tags": {
+        "TIFFTAG_SOFTWARE": "LAStools is a product of rapidlasso GmbH, Germany",
+        "TIFFTAG_ARTIST": "created by LAStools (c) info@rapidlasso.de",
+        "AREA_OR_POINT": "Area"
+      }
+    },
+    {
+      "tile": "dgm1_32_360_5599_1_rp_2024.tif",
+      "file_size_bytes": 1952392,
+      "crs_epsg": null,
+      "crs_name": "ETRS89 / UTM zone 32N + DHHN2016 height",
+      "width": 1000,
+      "height": 1000,
+      "bands": 1,
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "res_x": 1.0,
+      "res_y": 1.0,
+      "bounds": [
+        360000.0,
+        5599000.0,
+        361000.0,
+        5600000.0
+      ],
+      "valid_pixels": 1000000,
+      "nodata_pixels": 0,
+      "nan_pixels": 0,
+      "elev_min": 123.35,
+      "elev_max": 341.45,
+      "elev_mean": 253.256,
+      "elev_std": 59.313,
+      "tags": {
+        "TIFFTAG_SOFTWARE": "LAStools is a product of rapidlasso GmbH, Germany",
+        "TIFFTAG_ARTIST": "created by LAStools (c) info@rapidlasso.de",
+        "AREA_OR_POINT": "Area"
+      }
+    },
+    {
+      "tile": "dgm1_32_361_5597_1_rp_2024.tif",
+      "file_size_bytes": 1881606,
+      "crs_epsg": null,
+      "crs_name": "ETRS89 / UTM zone 32N + DHHN2016 height",
+      "width": 1000,
+      "height": 1000,
+      "bands": 1,
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "res_x": 1.0,
+      "res_y": 1.0,
+      "bounds": [
+        361000.0,
+        5597000.0,
+        362000.0,
+        5598000.0
+      ],
+      "valid_pixels": 1000000,
+      "nodata_pixels": 0,
+      "nan_pixels": 0,
+      "elev_min": 125.8,
+      "elev_max": 439.86,
+      "elev_mean": 279.941,
+      "elev_std": 83.913,
+      "tags": {
+        "TIFFTAG_SOFTWARE": "LAStools is a product of rapidlasso GmbH, Germany",
+        "TIFFTAG_ARTIST": "created by LAStools (c) info@rapidlasso.de",
+        "AREA_OR_POINT": "Area"
+      }
+    },
+    {
+      "tile": "dgm1_32_361_5598_1_rp_2024.tif",
+      "file_size_bytes": 1953488,
+      "crs_epsg": null,
+      "crs_name": "ETRS89 / UTM zone 32N + DHHN2016 height",
+      "width": 1000,
+      "height": 1000,
+      "bands": 1,
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "res_x": 1.0,
+      "res_y": 1.0,
+      "bounds": [
+        361000.0,
+        5598000.0,
+        362000.0,
+        5599000.0
+      ],
+      "valid_pixels": 1000000,
+      "nodata_pixels": 0,
+      "nan_pixels": 0,
+      "elev_min": 122.19,
+      "elev_max": 384.9,
+      "elev_mean": 211.797,
+      "elev_std": 66.376,
+      "tags": {
+        "TIFFTAG_SOFTWARE": "LAStools is a product of rapidlasso GmbH, Germany",
+        "TIFFTAG_ARTIST": "created by LAStools (c) info@rapidlasso.de",
+        "AREA_OR_POINT": "Area"
+      }
+    },
+    {
+      "tile": "dgm1_32_361_5599_1_rp_2024.tif",
+      "file_size_bytes": 1808746,
+      "crs_epsg": null,
+      "crs_name": "ETRS89 / UTM zone 32N + DHHN2016 height",
+      "width": 1000,
+      "height": 1000,
+      "bands": 1,
+      "dtype": "float32",
+      "nodata": -9999.0,
+      "res_x": 1.0,
+      "res_y": 1.0,
+      "bounds": [
+        361000.0,
+        5599000.0,
+        362000.0,
+        5600000.0
+      ],
+      "valid_pixels": 1000000,
+      "nodata_pixels": 0,
+      "nan_pixels": 0,
+      "elev_min": 117.97,
+      "elev_max": 359.84,
+      "elev_mean": 173.854,
+      "elev_std": 64.863,
+      "tags": {
+        "TIFFTAG_SOFTWARE": "LAStools is a product of rapidlasso GmbH, Germany",
+        "TIFFTAG_ARTIST": "created by LAStools (c) info@rapidlasso.de",
+        "AREA_OR_POINT": "Area"
+      }
+    }
+  ]
+}
