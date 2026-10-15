@@ -11,8 +11,8 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-C1v1MbHF.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BsfYMsWa.css">
+    <script type="module" crossorigin src="./assets/index-DxdmiujG.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-D7WFSwOn.css">
   </head>
   <body>
     <!-- App Shell -->
@@ -145,19 +145,29 @@
           </div>
         </div>
 
-        <!-- Feature Inspection HUD (Top Right) -->
-        <div class="hud-panel hud-inspector" id="hud-inspector">
-          <div class="panel-header">
-            <span class="panel-title">FEATURE INSPECTOR</span>
-            <span class="status-pill info" id="inspect-tag">HOVER OVER OBJECT</span>
+        <!-- Feature Detail Panel (Click-to-View Details) -->
+        <div class="hud-panel hud-feature-details hidden" id="hud-feature-details">
+          <div class="panel-header detail-header">
+            <div class="detail-header-info">
+              <span class="panel-title" id="detail-panel-title">FEATURE DETAILS</span>
+              <span class="status-pill info font-mono" id="detail-panel-badge">SELECTED</span>
+            </div>
+            <button class="btn-close-sm" id="btn-close-details" title="Close details panel (or click empty map space)">✕</button>
           </div>
-          <div class="inspector-content" id="inspect-content">
-            <p class="inspect-placeholder font-mono text-muted">
-              Hover over a 3D building, road segment, or emergency facility pin to inspect verified attributes.
-            </p>
+          <div class="detail-panel-body" id="detail-panel-body">
+            <!-- Dynamic feature details rendered on click -->
           </div>
-          <!-- Inundation Depth & Access Legend (Milestone 6 & 7) -->
-          <!-- Inundation Depth & Access Legend (Phase 1 Road Classification) -->
+        </div>
+
+        <!-- Inundation Depth & Access Map Legend -->
+        <div class="hud-panel hud-legend-panel font-mono" id="hud-legend-panel">
+          <div class="panel-header legend-panel-header" id="legend-panel-header">
+            <div class="legend-header-info">
+              <span class="panel-title">MAP LEGEND</span>
+              <span class="legend-count-pill" id="legend-count-pill">8 CATEGORIES</span>
+            </div>
+            <button class="btn-legend-collapse" id="btn-toggle-legend" title="Toggle legend view">▾</button>
+          </div>
           <div class="hud-legend font-mono" id="hud-legend">
             <div class="legend-row">
               <span class="legend-title">DEPTH:</span>
@@ -327,18 +337,14 @@
           </div>
         </div>
 
-        <!-- Compass & Coordinate Reference Overlay (Bottom Right) -->
+        <!-- Compass Reference Overlay (Bottom Right) -->
         <div class="hud-compass-widget">
-          <div class="compass-disc" id="compass-disc">
+          <div class="compass-disc" id="compass-disc" title="Current camera compass orientation">
             <span class="compass-n">N</span>
             <span class="compass-e">E</span>
             <span class="compass-s">S</span>
             <span class="compass-w">W</span>
             <div class="compass-needle" id="compass-needle"></div>
-          </div>
-          <div class="scale-bar font-mono">
-            <div class="scale-ruler"></div>
-            <span class="scale-label">500 m</span>
           </div>
         </div>
       </main>
