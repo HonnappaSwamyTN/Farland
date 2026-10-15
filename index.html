@@ -60,6 +60,9 @@
             <span class="indicator-dot success"></span>
             <span class="badge-text" id="provenance-badge-text">TERRAIN: LVermGeo RLP DGM1 (REAL DEM)</span>
           </div>
+          <button class="btn-integrity-badge font-mono" id="btn-toggle-data-quality" title="View transparent data quality, uncertainty & provenance indicators">
+            🛡️ AUDIT &amp; UNCERTAINTY
+          </button>
         </div>
       </header>
 
@@ -107,6 +110,40 @@
           </div>
         </div>
 
+        <!-- Phase 4: Scenario Comparison HUD (Top Left, below Telemetry) -->
+        <div class="hud-panel hud-scenario-diff font-mono" id="hud-scenario-diff">
+          <div class="panel-header">
+            <span class="panel-title">SCENARIO COMPARISON</span>
+            <span class="hud-tag" id="scenario-baseline-tag">BASE: 124.0m</span>
+          </div>
+          <div class="scenario-diff-grid">
+            <div class="diff-metric-card">
+              <span class="diff-metric-label">NEWLY AFFECTED:</span>
+              <span class="diff-metric-val" id="diff-new-blds">0 (0.0%)</span>
+            </div>
+            <div class="diff-metric-card">
+              <span class="diff-metric-label">ROUTE LOST:</span>
+              <span class="diff-metric-val text-rose font-bold" id="diff-route-lost">0 bldgs</span>
+            </div>
+            <div class="diff-metric-card">
+              <span class="diff-metric-label">NEW IMPASSABLE:</span>
+              <span class="diff-metric-val" id="diff-new-roads">0 (0.0%)</span>
+            </div>
+            <div class="diff-metric-card">
+              <span class="diff-metric-label">ISOLATED SHELTER:</span>
+              <span class="diff-metric-val" id="diff-isolated-shelters">0 / 3</span>
+            </div>
+          </div>
+          <div class="scenario-actions">
+            <button class="hud-pill-btn" id="btn-set-baseline" title="Set current water level as comparison baseline">📌 Set Baseline</button>
+            <button class="hud-pill-btn active" id="btn-toggle-access-lost" title="Toggle 3D visual warning halos on buildings that lost road evacuation access">⚠️ Access Rings: ON</button>
+            <button class="hud-pill-btn" id="btn-toggle-risk-panel" title="Toggle Building Risk Ranking list">📊 Risk Ranking</button>
+            <button class="hud-pill-btn" id="btn-open-scenarios" title="Manage saved scenarios and compare custom water levels">📁 Scenarios</button>
+            <button class="hud-pill-btn" id="btn-pill-integrity" title="View transparent Data Quality & Uncertainty Audit">🛡️ Quality</button>
+            <button class="hud-pill-btn" id="btn-export-report" title="Generate downloadable CSV or print-friendly scenario report">📄 Export Report</button>
+          </div>
+        </div>
+
         <!-- Feature Inspection HUD (Top Right) -->
         <div class="hud-panel hud-inspector" id="hud-inspector">
           <div class="panel-header">
@@ -119,6 +156,7 @@
             </p>
           </div>
           <!-- Inundation Depth & Access Legend (Milestone 6 & 7) -->
+          <!-- Inundation Depth & Access Legend (Phase 1 Road Classification) -->
           <div class="hud-legend font-mono" id="hud-legend">
             <div class="legend-row">
               <span class="legend-title">DEPTH:</span>
@@ -128,12 +166,147 @@
               <span class="legend-chip chip-deep" title="Water depth >= 1.50m at building base">■ &ge;1.5m</span>
             </div>
             <div class="legend-row">
-              <span class="legend-title">ACCESS:</span>
-              <span class="legend-chip chip-passable chip-road-clear" title="Dry passable road segment">■ Clear</span>
-              <span class="legend-chip chip-submerged chip-road-submerged" title="Submerged impassable road">■ Impassable</span>
+              <span class="legend-title">ROADS:</span>
+              <span class="legend-chip chip-road-unaffected" title="Unaffected: No positive water depth detected at valid samples">■ Unaffected</span>
+              <span class="legend-chip chip-road-exposed" title="Exposed: Water depth detected below impassability threshold (<0.15m)">■ Exposed</span>
+              <span class="legend-chip chip-road-impassable" title="Impassable: Estimated depth exceeds conservative threshold (>=0.15m)">■ Impassable</span>
+              <span class="legend-chip chip-road-unknown" title="Unknown: Insufficient or unreliable terrain elevation data">■ Unknown</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-title">SHELTER:</span>
               <span class="legend-chip chip-shelter-ok chip-fac-ok" title="Operational shelter with dry local road access">■ Shelter OK</span>
               <span class="legend-chip chip-shelter-iso chip-fac-isolated" title="Isolated shelter with cut-off access roads">■ Isolated</span>
             </div>
+            <div class="legend-row">
+              <span class="legend-title">ROUTES:</span>
+              <span class="legend-chip chip-route-shelter" title="Shelter Evacuation Route (#a855f7 glowing purple line)">■ Shelter Evac</span>
+              <span class="legend-chip chip-route-hospital" title="Hospital / Medical Route (#3b82f6 glowing blue line)">■ Hospital Route</span>
+              <span class="legend-chip chip-route-blocked" title="Blocked Route: Severed by impassable water (>=0.15m)">■ Blocked</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-title">CLUSTERS:</span>
+              <span class="legend-chip chip-cluster-crit" title="Critical Cluster (Max depth >= 2.0m)">■ &ge;2.0m Crit</span>
+              <span class="legend-chip chip-cluster-high" title="High Exposure Cluster (Max depth 1.0m - 2.0m)">■ 1–2m High</span>
+              <span class="legend-chip chip-cluster-mod" title="Moderate Cluster (Max depth < 1.0m)">■ &lt;1.0m Mod</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-title">PROPOSED:</span>
+              <span class="legend-chip chip-prop-viable" title="Proposed Candidate Safe Site (Viable/High Ground)">■ Proposed Viable</span>
+              <span class="legend-chip chip-prop-flooded" title="Proposed Candidate (Disqualified/Flooded)">■ Submerged</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-title">RISK:</span>
+              <span class="legend-chip chip-risk-crit" title="Critical Priority (Score >= 75)">■ &ge;75 Crit</span>
+              <span class="legend-chip chip-risk-high" title="High Priority (Score 50-74)">■ 50–74 High</span>
+              <span class="legend-chip chip-risk-mod" title="Moderate Priority (Score 25-49)">■ 25–49 Mod</span>
+              <span class="legend-chip chip-risk-low" title="Low Priority (Score < 25)">■ &lt;25 Low</span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-title">ACCESS:</span>
+              <span class="legend-chip chip-access-connected" title="Connected to reachable shelter via dry roads">■ Connected</span>
+              <span class="legend-chip chip-access-degraded" title="Connected via shallow-flooded roads">■ Degraded</span>
+              <span class="legend-chip chip-access-lost" title="Route lost due to newly flooded impassable roads">■ Route Lost</span>
+              <span class="legend-chip chip-access-source" title="Isolated in source road dataset">■ Disconnected</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 4: Building Risk Ranking Floating Panel -->
+        <div class="hud-panel hud-risk-panel hidden" id="hud-risk-panel">
+          <div class="panel-header">
+            <span class="panel-title">BUILDING RISK RANKING</span>
+            <div class="panel-header-actions">
+              <span class="hud-tag" id="risk-panel-count">Top 25</span>
+              <button class="btn-close-sm" id="btn-close-risk" title="Close risk panel">✕</button>
+            </div>
+          </div>
+          <div class="risk-controls font-mono">
+            <div class="risk-sort-row">
+              <span class="risk-sort-label">SORT:</span>
+              <button class="sort-btn active" data-sort="risk" id="sort-risk">Total Risk</button>
+              <button class="sort-btn" data-sort="depth" id="sort-depth">Depth</button>
+              <button class="sort-btn" data-sort="lost" id="sort-lost">Route Lost</button>
+            </div>
+          </div>
+          <div class="risk-list-container font-mono" id="risk-list-container">
+            <!-- Dynamic building risk rows rendered by UIController -->
+          </div>
+          <div class="risk-footer font-mono text-muted">
+            ⚠️ Conceptual decision-support indicator. Not an actuarial life-safety probability.
+          </div>
+        </div>
+
+        <!-- Phase 5: Scenario Management Floating Panel -->
+        <div class="hud-panel hud-scenario-panel hidden" id="hud-scenario-panel">
+          <div class="panel-header">
+            <span class="panel-title">SCENARIO MANAGEMENT</span>
+            <div class="panel-header-actions">
+              <span class="hud-tag" id="scenario-panel-count">3 Saved</span>
+              <button class="btn-close-sm" id="btn-close-scenarios" title="Close scenario panel">✕</button>
+            </div>
+          </div>
+
+          <div class="scenario-storage-notice hidden font-mono" id="scenario-storage-notice">
+            <!-- Warning message if localStorage is unavailable or in-memory fallback is active -->
+          </div>
+
+          <!-- Quick Save Section -->
+          <div class="scenario-save-section font-mono">
+            <div class="scenario-section-subtitle">SAVE CURRENT SIMULATION:</div>
+            <div class="save-input-row">
+              <input type="text" class="scenario-input" id="input-scenario-name" placeholder="Scenario name..." maxlength="50" />
+              <button class="btn-scenario-save" id="btn-save-scenario" title="Save current water level and settings">💾 Save</button>
+            </div>
+          </div>
+
+          <!-- Compare Two Scenarios Section -->
+          <div class="scenario-compare-section font-mono">
+            <div class="scenario-section-subtitle">COMPARE SAVED SCENARIOS:</div>
+            <div class="compare-select-row">
+              <select class="scenario-select" id="select-compare-baseline" title="Select baseline scenario"></select>
+              <span class="compare-arrow">➔</span>
+              <select class="scenario-select" id="select-compare-target" title="Select comparison target scenario"></select>
+              <button class="btn-scenario-compare" id="btn-execute-compare" title="Run comparative reachability and exposure analysis">⚖️ Diff</button>
+            </div>
+          </div>
+
+          <!-- Scenario Export Actions Section -->
+          <div class="scenario-export-section font-mono">
+            <div class="scenario-section-subtitle">EXPORT SCENARIO DATA:</div>
+            <div class="scenario-export-row">
+              <button class="btn-scenario-export btn-export-csv" id="btn-scenario-export-csv" title="Download scenario analysis as RFC 4180 CSV">
+                📥 Export CSV
+              </button>
+              <button class="btn-scenario-export btn-export-report" id="btn-scenario-export-report" title="Open comprehensive report modal & print view">
+                📄 Export Report
+              </button>
+            </div>
+          </div>
+
+          <!-- Scrollable Scenarios List -->
+          <div class="scenario-list-container font-mono" id="scenario-list-container">
+            <!-- Rendered dynamically by UIController -->
+          </div>
+
+          <div class="scenario-panel-footer font-mono text-muted">
+            ℹ️ Scenarios are saved locally in your browser storage. No cloud account or external backend required.
+          </div>
+        </div>
+
+        <!-- Phase 6: Data Quality & Uncertainty Audit HUD -->
+        <div class="hud-panel hud-data-quality hidden" id="hud-data-quality">
+          <div class="panel-header">
+            <div class="panel-header-title-group">
+              <span class="panel-title">DATA QUALITY &amp; UNCERTAINTY</span>
+              <span class="hud-tag" id="dq-header-tag">AUDITED</span>
+            </div>
+            <button class="btn-close-sm" id="btn-close-data-quality" title="Close audit panel">✕</button>
+          </div>
+          <div class="dq-content font-mono" id="dq-content">
+            <!-- Dynamic data quality indicators rendered by UIController -->
+          </div>
+          <div class="dq-footer font-mono text-muted">
+            ℹ️ All indicators derived from real DGM1 LiDAR elevation data and graph topology.
           </div>
         </div>
 
@@ -196,6 +369,14 @@
                 <span class="btn-dot water-dot"></span>
                 <span>Sim Water</span>
               </button>
+              <button class="dock-btn active" id="btn-toggle-clusters" title="Toggle affected-area evacuation clusters (spatial grouping)">
+                <span class="btn-dot cluster-dot"></span>
+                <span>Clusters</span>
+              </button>
+              <button class="dock-btn active" id="btn-toggle-proposed" title="Toggle proposed candidate emergency safe sites (unverified)">
+                <span class="btn-dot proposed-dot"></span>
+                <span>Prop Sites</span>
+              </button>
             </div>
           </div>
           <div class="dock-subgroup">
@@ -215,6 +396,41 @@
               </button>
               <button class="dock-btn" id="btn-toggle-wireframe" title="Toggle terrain wireframe mesh">
                 <span>📐 Wire</span>
+              </button>
+            </div>
+          </div>
+          <div class="dock-subgroup">
+            <span class="dock-subgroup-title">ROUTING</span>
+            <div class="dock-buttons">
+              <button class="dock-btn" id="btn-route-shelter" title="Evacuate from selected origin (or default center) to nearest reachable shelter (Purple line)">
+                <span class="btn-dot shelter-route-dot"></span>
+                <span>🏃 Evac Shelter</span>
+              </button>
+              <button class="dock-btn" id="btn-route-hospital" title="Route to hospital or medical site (Blue line)">
+                <span class="btn-dot hospital-route-dot"></span>
+                <span>🏥 Hospital/Med</span>
+              </button>
+              <button class="dock-btn hidden" id="btn-route-alt" title="Toggle distinct alternative route">
+                <span>🔀 Alt Route</span>
+              </button>
+              <button class="dock-btn" id="btn-route-clear" title="Clear active route">
+                <span>✕ Clear</span>
+              </button>
+              <button class="dock-btn" id="btn-dock-risk" title="Toggle Building Risk Ranking Panel">
+                <span class="btn-dot" style="background:#f97316;"></span>
+                <span>📊 Risk</span>
+              </button>
+              <button class="dock-btn" id="btn-dock-scenarios" title="Open Scenario Management & Comparison Panel">
+                <span class="btn-dot" style="background:#06b6d4;"></span>
+                <span>📁 Scenarios</span>
+              </button>
+              <button class="dock-btn" id="btn-dock-export" title="Export Scenario Analysis CSV & Print Report">
+                <span class="btn-dot" style="background:#10b981;"></span>
+                <span>📄 Report</span>
+              </button>
+              <button class="dock-btn" id="btn-dock-integrity" title="View Data Quality, Uncertainty & Provenance Indicators">
+                <span class="btn-dot" style="background:#a855f7;"></span>
+                <span>🛡️ Quality</span>
               </button>
             </div>
           </div>
@@ -279,6 +495,44 @@
           <h2 class="error-title">Application Error</h2>
           <p class="error-msg" id="error-msg-text">Failed to load geographic assets.</p>
           <button class="btn-error-retry" id="btn-error-retry">Reload Application</button>
+        </div>
+      </div>
+
+      <!-- Phase 5: Exportable Scenario Report Modal -->
+      <div class="report-export-overlay hidden" id="report-export-overlay">
+        <div class="report-export-dialog font-mono">
+          <div class="modal-header">
+            <div class="modal-title-wrap">
+              <span class="modal-title">SCENARIO ANALYSIS & ACCESSIBILITY REPORT</span>
+              <span class="modal-subtitle text-muted">Dernau, Rhineland-Palatinate · DGM1 LiDAR Ground Intersection Model</span>
+            </div>
+            <button class="btn-close-sm" id="btn-close-export-modal" title="Close export modal">✕</button>
+          </div>
+
+          <div class="export-actions-bar">
+            <button class="btn-export-download" id="btn-download-csv">📥 Download CSV (RFC 4180)</button>
+            <button class="btn-export-print" id="btn-open-print-report">🖨️ Print / Save as PDF</button>
+          </div>
+
+          <div class="export-preview-container" id="export-preview-container">
+            <!-- Live preview summary cards rendered dynamically -->
+          </div>
+
+          <div class="export-footer text-muted">
+            ⚠️ Conceptual decision-support indicator only. Ground-contact depth does not establish interior flooding, structural damage, or calibrated life-safety probability. All emergency facilities are simulated and unverified.
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 5: Reversible Delete Confirmation Modal -->
+      <div class="confirm-modal-overlay hidden" id="delete-confirm-modal">
+        <div class="confirm-modal-dialog font-mono">
+          <div class="confirm-modal-title">DELETE SCENARIO</div>
+          <p class="confirm-modal-text" id="delete-confirm-text">Are you sure you want to delete this saved scenario?</p>
+          <div class="confirm-modal-actions">
+            <button class="btn-confirm-delete" id="btn-confirm-delete">Delete Scenario</button>
+            <button class="btn-cancel-delete" id="btn-cancel-delete">Cancel</button>
+          </div>
         </div>
       </div>
     </div>

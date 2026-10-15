@@ -45,6 +45,13 @@ export class BuildingLayer {
       moderate: 0,
       deep: 0,
     };
+
+    // Phase 4: Selection and Access-Lost 3D Highlights
+    this.highlightBox = null;
+    this.highlightMarker = null;
+    this.accessLostGroup = new THREE.Group();
+    this.accessLostGroup.name = 'Access_Lost_Highlights';
+    this.group.add(this.accessLostGroup);
   }
 
   /**
@@ -141,14 +148,28 @@ export class BuildingLayer {
 
         const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
 
-        // Orient extrusion from 2D (X, -Z) into 3D (X, Y, Z)
-        geom.rotateX(Math.PI / 2);
-        geom.translate(0, baseElevation, 0);
+        // Orient extrusion from 2D (X, -Z) into 3D (X, Y, Z) with +Y pointing up
+        geom.rotateX(-Math.PI / 2);
+
+        // Adapt building base and roof vertices to terrain elevation and slope
+        const pos = geom.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const vx = pos.getX(i);
+          const vz = pos.getZ(i);
+          const vy = pos.getY(i);
+          const gElev = (this.terrainManager && typeof this.terrainManager.getElevationAt === 'function'
+            ? this.terrainManager.getElevationAt(vx, vz)
+            : null) ?? baseElevation;
+          if (Math.abs(vy) < 1e-4) {
+            pos.setY(i, gElev);
+          } else {
+            pos.setY(i, gElev + buildingHeight);
+          }
+        }
+        geom.computeVertexNormals();
+        geom.computeBoundingBox();
 
         allGeometries.push(geom);
-
-        // Store bounding sphere & metadata for raycast inspection
-        geom.computeBoundingBox();
         this.features.push({
           id: props.id || `bld-${index}`,
           kind: 'building',
@@ -380,6 +401,95 @@ export class BuildingLayer {
   }
 
   /**
+   * Highlight a specific building in 3D scene (Phase 4 selection).
+   * @param {string} buildingId
+   * @returns {Object|null} Highlighted building feature
+   */
+  highlightBuilding(buildingId) {
+    this.clearHighlight();
+    const feat = this.features.find(f => f.id === buildingId);
+    if (!feat || !feat.bounds) return null;
+
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    feat.bounds.getSize(size);
+    feat.bounds.getCenter(center);
+
+    // 1. Expanded bounding box outline
+    const boxGeom = new THREE.BoxGeometry(size.x + 2.0, size.y + 2.0, size.z + 2.0);
+    const boxEdges = new THREE.EdgesGeometry(boxGeom);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 3 });
+    this.highlightBox = new THREE.LineSegments(boxEdges, lineMat);
+    this.highlightBox.position.copy(center);
+    this.group.add(this.highlightBox);
+
+    // 2. Downward tactical beacon marker above roof
+    const coneGeom = new THREE.ConeGeometry(2.5, 6.0, 4);
+    coneGeom.rotateX(Math.PI);
+    const coneMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    this.highlightMarker = new THREE.Mesh(coneGeom, coneMat);
+    this.highlightMarker.position.set(center.x, feat.bounds.max.y + 8.0, center.z);
+    this.group.add(this.highlightMarker);
+
+    return feat;
+  }
+
+  /**
+   * Remove active building selection highlight.
+   */
+  clearHighlight() {
+    if (this.highlightBox) {
+      this.group.remove(this.highlightBox);
+      this.highlightBox.geometry.dispose();
+      this.highlightBox.material.dispose();
+      this.highlightBox = null;
+    }
+    if (this.highlightMarker) {
+      this.group.remove(this.highlightMarker);
+      this.highlightMarker.geometry.dispose();
+      this.highlightMarker.material.dispose();
+      this.highlightMarker = null;
+    }
+  }
+
+  /**
+   * Render distinct warning halo rings for buildings that have lost road evacuation access (Phase 4).
+   * @param {Set<string>} accessLostBuildingIds
+   */
+  updateAccessLostHighlights(accessLostBuildingIds) {
+    this.clearAccessLostHighlights();
+    if (!accessLostBuildingIds || accessLostBuildingIds.size === 0) return;
+
+    for (const feat of this.features) {
+      if (accessLostBuildingIds.has(feat.id)) {
+        const ringGeom = new THREE.RingGeometry(8.0, 11.0, 16);
+        ringGeom.rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: 0xef4444, // Red warning ring
+          transparent: true,
+          opacity: 0.6,
+          side: THREE.DoubleSide,
+        });
+        const ringMesh = new THREE.Mesh(ringGeom, ringMat);
+        ringMesh.position.set(feat.center.x, feat.baseElevationM + 0.3, feat.center.z);
+        this.accessLostGroup.add(ringMesh);
+      }
+    }
+  }
+
+  /**
+   * Clear access-lost warning rings.
+   */
+  clearAccessLostHighlights() {
+    while (this.accessLostGroup.children.length > 0) {
+      const child = this.accessLostGroup.children[0];
+      this.accessLostGroup.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    }
+  }
+
+  /**
    * Toggle visibility of buildings layer.
    * @param {boolean} visible
    */
@@ -391,6 +501,8 @@ export class BuildingLayer {
    * Dispose geometries and materials.
    */
   dispose() {
+    this.clearHighlight();
+    this.clearAccessLostHighlights();
     if (this.buildingsMesh) {
       if (this.buildingsMesh.geometry) this.buildingsMesh.geometry.dispose();
       this.group.remove(this.buildingsMesh);

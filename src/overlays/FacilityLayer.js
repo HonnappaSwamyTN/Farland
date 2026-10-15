@@ -127,6 +127,26 @@ export class FacilityLayer {
 
       this.disposables.push(cylinderGeom, cylinderMat, headGeom, headMat, ringGeom, ringMat);
 
+      // 4. Hospital Marker: Clearly visible 3D Red Plus Sign
+      if (props.type === 'hospital') {
+        const plusGroup = new THREE.Group();
+        const plusMat = new THREE.MeshStandardMaterial({
+          color: 0xef4444,
+          emissive: 0xff0000,
+          emissiveIntensity: 0.85,
+          roughness: 0.2,
+        });
+        const hBarGeom = new THREE.BoxGeometry(4.2, 1.2, 0.9);
+        const vBarGeom = new THREE.BoxGeometry(1.2, 4.2, 0.9);
+        const hBarMesh = new THREE.Mesh(hBarGeom, plusMat);
+        const vBarMesh = new THREE.Mesh(vBarGeom, plusMat);
+        plusGroup.add(hBarMesh);
+        plusGroup.add(vBarMesh);
+        plusGroup.position.set(local.x, baseElev + pinHeight + pinRadius * 2 + 3.8, local.z);
+        this.group.add(plusGroup);
+        this.disposables.push(hBarGeom, vBarGeom, plusMat);
+      }
+
       // Store mesh materials for dynamic accessibility coloring
       this.facilityMeshes.push({
         cylinderMat,
@@ -143,9 +163,11 @@ export class FacilityLayer {
         new THREE.Vector3(pinRadius * 8, pinHeight + 10, pinRadius * 8)
       );
 
+      const fallbackName = props.type === 'shelter' ? 'Shelter' : 'Emergency Facility';
+
       this.features.push({
         id: props.facility_id || `fac-${index}`,
-        name: props.name || 'Emergency Facility',
+        name: props.name || fallbackName,
         type: props.type || 'unknown',
         provenance: props.provenance || 'dataset',
         kind: 'facility',

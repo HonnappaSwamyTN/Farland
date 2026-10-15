@@ -300,6 +300,14 @@ export class FloodWaterManager {
   }
 
   /**
+   * Current modeled water elevation in meters MSL.
+   * @returns {number}
+   */
+  get currentWaterLevel() {
+    return this.waterLevel;
+  }
+
+  /**
    * Query the modeled water surface elevation at continuous metric coordinates (localX, localZ).
    * @param {number} localX
    * @param {number} localZ

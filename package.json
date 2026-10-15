@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "verify": "vite build",
-    "test": "node test_projection.mjs && node test_overlays.mjs && node test_dem_terrain.mjs && node test_flood_water.mjs && node test_milestone6.mjs && node test_milestone7.mjs && node test_milestone8.mjs"
+    "test": "node test_projection.mjs && node test_overlays.mjs && node test_dem_terrain.mjs && node test_flood_water.mjs && node test_milestone6.mjs && node test_milestone7.mjs && node test_milestone8.mjs && node test_road_network.mjs && node test_routing_service.mjs && node test_clustering_proposed_sites.mjs && node test_building_risk_and_access.mjs && node test_scenario_management_and_export.mjs && node test_phase6_data_integrity.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"
