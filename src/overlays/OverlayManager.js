@@ -87,10 +87,10 @@ export class OverlayManager {
     console.log('📦 Loading Dernau geographic overlays...');
 
     const [bldStats, roadStats, facStats, floodStats] = await Promise.all([
-      this.buildingLayer.load('/data/dernau/buildings_exposed.geojson'),
-      this.roadLayer.load('/data/dernau/roads_status.geojson'),
-      this.facilityLayer.load('/data/dernau/facilities.geojson'),
-      this.floodExtentLayer.load('/data/dernau/flood_extent.geojson'),
+      this.buildingLayer.load('./data/dernau/buildings_exposed.geojson'),
+      this.roadLayer.load('./data/dernau/roads_status.geojson'),
+      this.facilityLayer.load('./data/dernau/facilities.geojson'),
+      this.floodExtentLayer.load('./data/dernau/flood_extent.geojson'),
     ]);
 
     this.stats.buildings = bldStats;
@@ -492,7 +492,54 @@ export class OverlayManager {
       if (road) return road;
     }
 
+    // 6. Check historical flood extent
+    if (this.visibility.floodExtent && this.floodExtentLayer?.fillMesh) {
+      const hits = this.raycaster.intersectObject(this.floodExtentLayer.fillMesh);
+      if (hits.length > 0) {
+        return {
+          id: 'flood-extent-july2021',
+          name: 'Historical Flood Footprint (July 2021)',
+          kind: 'flood-extent',
+          source: 'Copernicus EMS (EMSR517) / SpaceNet 8',
+          event: 'Ahr Valley Flash Flood (14–15 July 2021)',
+          studyArea: 'Dernau, Rhineland-Palatinate, Germany',
+          affectedSummary: '485 buildings inundated · 42 road cut-offs',
+          waterElevationEstimate: '~130.0m – 135.0m MSL peak flood crest',
+          center: { x: hits[0].point.x, y: hits[0].point.y, z: hits[0].point.z },
+          description: 'Verified disaster inundation footprint delineated from satellite radar (SAR) and high-resolution aerial imagery.',
+        };
+      }
+    }
+
+    // 7. Check simulated flood water mesh
+    if (this.floodWaterManager?.visible && this.floodWaterManager?.waterMesh) {
+      const hits = this.raycaster.intersectObject(this.floodWaterManager.waterMesh);
+      if (hits.length > 0) {
+        const curLvl = this.floodWaterManager.currentWaterLevel ?? 124.0;
+        const profile = this.floodWaterManager.profileMode || 'planar';
+        const connected = this.floodWaterManager.hydraulicallyConnected !== false;
+        return {
+          id: 'simulated-flood-water',
+          name: `Simulated Flood Surface (${curLvl.toFixed(2)}m MSL)`,
+          kind: 'flood-water',
+          waterLevel: curLvl,
+          profileMode: profile === 'slope' ? 'Slope-Aware (Ahr Thalweg Monotonic Gradient)' : 'Horizontal Planar',
+          hydraulicallyConnected: connected ? 'Hydraulically Connected to Riverbed' : 'Topographic Mask (Unconnected Ponding)',
+          center: { x: hits[0].point.x, y: hits[0].point.y, z: hits[0].point.z },
+          description: 'Elevation-aware flood water surface derived from verified Rhineland-Palatinate DGM1 bare-earth LiDAR DEM.',
+        };
+      }
+    }
+
     return null;
+  }
+
+  /**
+   * Attach FloodWaterManager for raycasting and telemetry integration.
+   * @param {Object} fwm
+   */
+  setFloodWaterManager(fwm) {
+    this.floodWaterManager = fwm;
   }
 
   /**

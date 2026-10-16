@@ -68,7 +68,7 @@ export class RoadLayer {
    * Load roads GeoJSON.
    * @param {string} url
    */
-  async load(url = '/data/dernau/roads_status.geojson') {
+  async load(url = './data/dernau/roads_status.geojson') {
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`RoadLayer: Failed to fetch roads GeoJSON from ${url} (${res.status})`);

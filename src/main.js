@@ -51,6 +51,7 @@ class HighWaterApplication {
         this.terrainManager,
         this.overlayManager
       );
+      this.overlayManager.setFloodWaterManager(this.floodWaterManager);
 
       // 7. Initialize UI Controller & bind HUD
       this.ui = new UIController({
@@ -65,7 +66,7 @@ class HighWaterApplication {
       this.ui.setLoadingProgress('Ingesting verified Rhineland-Palatinate DGM1 terrain...', 25);
 
       // 8. Load Active Terrain (Real DGM1 DEM with graceful fallback)
-      const terrainMeta = await this.terrainManager.loadRealTerrain('/data/dernau/dem_height_grid.json');
+      const terrainMeta = await this.terrainManager.loadRealTerrain('./data/dernau/dem_height_grid.json');
       console.log('📍 Active Terrain Loaded:', terrainMeta.label, terrainMeta);
 
       if (terrainMeta && !terrainMeta.isSynthetic) {

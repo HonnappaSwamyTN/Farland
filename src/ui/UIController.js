@@ -1,5 +1,5 @@
 import { Telemetry } from './Telemetry.js';
-import { ScenarioManager } from '../geo/ScenarioManager.js';
+import { ScenarioManager, escapeHTML } from '../geo/ScenarioManager.js';
 
 /**
  * HighWater 3D — UI Controller
@@ -58,6 +58,7 @@ export class UIController {
 
     this.eventListeners = [];
     this.bindEvents();
+    this.populateScenarioDropdowns();
   }
 
   cacheDOMElements() {
@@ -90,10 +91,16 @@ export class UIController {
       triangles: document.getElementById('diag-triangles'),
       frameTime: document.getElementById('diag-frame-time'),
 
-      // Feature Inspector
-      hudInspector: document.getElementById('hud-inspector'),
-      inspectTag: document.getElementById('inspect-tag'),
-      inspectContent: document.getElementById('inspect-content'),
+      // Feature Detail Panel (Click-to-View Details)
+      hudFeatureDetails: document.getElementById('hud-feature-details'),
+      detailPanelTitle: document.getElementById('detail-panel-title'),
+      detailPanelBadge: document.getElementById('detail-panel-badge'),
+      btnCloseDetails: document.getElementById('btn-close-details'),
+      detailPanelBody: document.getElementById('detail-panel-body'),
+
+      // Inundation Depth & Access Map Legend
+      hudLegendPanel: document.getElementById('hud-legend-panel'),
+      btnToggleLegend: document.getElementById('btn-toggle-legend'),
 
       // Preset Buttons
       btnViewIso: document.getElementById('btn-view-iso'),
@@ -190,6 +197,22 @@ export class UIController {
       btnCloseDataQuality: document.getElementById('btn-close-data-quality'),
       dqContent: document.getElementById('dq-content'),
       dqHeaderTag: document.getElementById('dq-header-tag'),
+
+      // Phase 7: Detailed Two-Scenario Comparison
+      hudSelectScenA: document.getElementById('hud-select-scen-a'),
+      hudSelectScenB: document.getElementById('hud-select-scen-b'),
+      hudCompareValidation: document.getElementById('hud-compare-validation'),
+      btnHudCompareScenarios: document.getElementById('btn-hud-compare-scenarios'),
+      panelCompareValidation: document.getElementById('panel-compare-validation'),
+      modalScenarioComparison: document.getElementById('modal-scenario-comparison'),
+      modalBadgeScenA: document.getElementById('modal-badge-scen-a'),
+      modalBadgeScenB: document.getElementById('modal-badge-scen-b'),
+      modalBadgeDelta: document.getElementById('modal-badge-delta'),
+      btnModalExportCsv: document.getElementById('btn-modal-export-csv'),
+      btnModalExportHtml: document.getElementById('btn-modal-export-html'),
+      btnCloseComparisonModal: document.getElementById('btn-close-comparison-modal'),
+      btnFooterCloseComparison: document.getElementById('btn-footer-close-comparison'),
+      comparisonModalBody: document.getElementById('comparison-modal-body'),
     };
   }
 
@@ -348,24 +371,56 @@ export class UIController {
       }
     });
 
-    // 5. Mouse movement over 3D viewport for coordinate sampling & feature raycasting
+    // 5. Mouse movement over 3D viewport for coordinate sampling
     this.addEvent(this.dom.viewportContainer, 'mousemove', (e) => {
       const rect = this.dom.viewportContainer.getBoundingClientRect();
       this.telemetry.setMouseCoords(e.clientX, e.clientY, rect);
     });
 
-    // 6. Viewport click to pin / select feature for presentation
+    // 6. Viewport click to view feature details or deselect on empty space
+    let pointerStartX = 0;
+    let pointerStartY = 0;
+    this.addEvent(this.dom.viewportContainer, 'pointerdown', (e) => {
+      pointerStartX = e.clientX;
+      pointerStartY = e.clientY;
+    });
+
     this.addEvent(this.dom.viewportContainer, 'click', (e) => {
       if (!this.overlayManager || !this.viewer) return;
+      // Do not treat camera drag/orbit/pan as a feature click
+      const dragDist = Math.hypot(e.clientX - pointerStartX, e.clientY - pointerStartY);
+      if (dragDist > 6) return;
+
       const rect = this.dom.viewportContainer.getBoundingClientRect();
       const mouseNdc = {
         x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
         y: -((e.clientY - rect.top) / rect.height) * 2 + 1,
       };
       const clicked = this.overlayManager.inspectFeature(mouseNdc, this.viewer.camera);
-      this.selectedFeature = clicked;
-      this.renderFeatureInspection(clicked);
+      if (clicked) {
+        this.selectFeature(clicked);
+      } else {
+        this.deselectFeature();
+      }
     });
+
+    // Close Details Panel Button
+    if (this.dom.btnCloseDetails) {
+      this.addEvent(this.dom.btnCloseDetails, 'click', (e) => {
+        e.stopPropagation();
+        this.deselectFeature();
+      });
+    }
+
+    // Toggle Map Legend Panel Collapse
+    if (this.dom.btnToggleLegend) {
+      this.addEvent(this.dom.btnToggleLegend, 'click', () => {
+        if (this.dom.hudLegendPanel) {
+          const isCollapsed = this.dom.hudLegendPanel.classList.toggle('collapsed');
+          this.dom.btnToggleLegend.textContent = isCollapsed ? '▸' : '▾';
+        }
+      });
+    }
 
     // 7. Error Retry
     this.addEvent(this.dom.btnErrorRetry, 'click', () => {
@@ -570,6 +625,72 @@ export class UIController {
         if (this.dom.hudDataQuality) this.dom.hudDataQuality.classList.add('hidden');
       });
     }
+
+    // 13. Phase 7: Detailed Two-Scenario Comparison Events
+    const onScenarioSelectChange = (source) => {
+      this.validateScenarioComparisonSelection(source);
+    };
+
+    if (this.dom.hudSelectScenA) {
+      this.addEvent(this.dom.hudSelectScenA, 'change', () => onScenarioSelectChange('hud'));
+    }
+    if (this.dom.hudSelectScenB) {
+      this.addEvent(this.dom.hudSelectScenB, 'change', () => onScenarioSelectChange('hud'));
+    }
+    if (this.dom.selectCompareBaseline) {
+      this.addEvent(this.dom.selectCompareBaseline, 'change', () => onScenarioSelectChange('panel'));
+    }
+    if (this.dom.selectCompareTarget) {
+      this.addEvent(this.dom.selectCompareTarget, 'change', () => onScenarioSelectChange('panel'));
+    }
+
+    if (this.dom.btnHudCompareScenarios) {
+      this.addEvent(this.dom.btnHudCompareScenarios, 'click', () => {
+        this.compareSelectedScenarios('hud');
+      });
+    }
+
+    if (this.dom.btnCloseComparisonModal) {
+      this.addEvent(this.dom.btnCloseComparisonModal, 'click', () => {
+        this.closeScenarioComparisonModal();
+      });
+    }
+
+    if (this.dom.btnFooterCloseComparison) {
+      this.addEvent(this.dom.btnFooterCloseComparison, 'click', () => {
+        this.closeScenarioComparisonModal();
+      });
+    }
+
+    if (this.dom.btnModalExportCsv) {
+      this.addEvent(this.dom.btnModalExportCsv, 'click', () => {
+        this.downloadDetailedComparisonCSV();
+      });
+    }
+
+    if (this.dom.btnModalExportHtml) {
+      this.addEvent(this.dom.btnModalExportHtml, 'click', () => {
+        this.exportDetailedComparisonHTML();
+      });
+    }
+
+    if (this.dom.modalScenarioComparison) {
+      this.addEvent(this.dom.modalScenarioComparison, 'click', (e) => {
+        if (e.target === this.dom.modalScenarioComparison) {
+          this.closeScenarioComparisonModal();
+        }
+      });
+    }
+
+    this.addEvent(window, 'keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (this.dom.modalScenarioComparison && !this.dom.modalScenarioComparison.classList.contains('hidden')) {
+          this.closeScenarioComparisonModal();
+        } else if (this.dom.reportExportOverlay && !this.dom.reportExportOverlay.classList.contains('hidden')) {
+          this.closeExportModal();
+        }
+      }
+    });
   }
 
   setActivePresetBtn(btn) {
@@ -685,49 +806,58 @@ export class UIController {
   }
 
   /**
-   * Programmatically pin/select a feature for presentation or inspection.
+   * Programmatically or interactively select a feature and show its detail panel.
    * @param {Object|null} feat
    */
   selectFeature(feat) {
+    if (!feat) {
+      this.deselectFeature();
+      return;
+    }
     this.selectedFeature = feat;
-    this.renderFeatureInspection(feat);
+    if (feat.kind === 'building' && feat.id) {
+      this.overlayManager?.highlightBuilding(feat.id);
+    } else {
+      this.overlayManager?.clearBuildingHighlight();
+    }
+    this.showFeatureDetails(feat);
   }
 
   /**
-   * Render feature inspection card when hovering over an interactive asset.
-   * @param {Object|null} feat
+   * Deselect active feature, clear highlights, and close the detail panel.
    */
-  renderFeatureInspection(feat) {
-    if (!this.dom.inspectContent || !this.dom.inspectTag) return;
+  deselectFeature() {
+    this.selectedFeature = null;
+    this.overlayManager?.clearBuildingHighlight();
+    this.hideFeatureDetails();
+  }
 
-    if (!feat) {
-      if (this.activeRoute) {
-        // Keep active route summary visible in inspector when cursor moves off objects
-        this.renderRouteSummary(this.activeRoute, this.activeAlternative);
-        return;
-      }
-
-      if (this.hoveredFeature !== null) {
-        this.hoveredFeature = null;
-        this.dom.inspectTag.className = 'status-pill info';
-        this.dom.inspectTag.textContent = 'HOVER OVER OBJECT';
-        this.dom.inspectContent.innerHTML = `
-          <p class="inspect-placeholder font-mono text-muted">
-            Hover over a 3D building, road segment, or emergency facility pin to inspect verified attributes. Click to select as route origin.
-          </p>`;
-        if (this.dom.hudInspector) this.dom.hudInspector.classList.remove('active');
-      }
-      return;
+  /**
+   * Hide the feature detail panel.
+   */
+  hideFeatureDetails() {
+    if (this.dom.hudFeatureDetails) {
+      this.dom.hudFeatureDetails.classList.add('hidden');
     }
+  }
 
-    // Avoid rebuilding DOM if hovering the exact same feature
-    if (this.hoveredFeature && this.hoveredFeature.id === feat.id) return;
-    this.hoveredFeature = feat;
+  /**
+   * Display clean, organized details when an item on the 3D map is clicked.
+   * Supports: Buildings, Roads, Facilities, Flood-Affected Areas, Clusters, Proposed Sites.
+   * @param {Object} feat
+   */
+  showFeatureDetails(feat) {
+    if (!this.dom.hudFeatureDetails || !this.dom.detailPanelBody) return;
 
-    if (this.dom.hudInspector) this.dom.hudInspector.classList.add('active');
+    this.dom.hudFeatureDetails.classList.remove('hidden');
 
     if (feat.kind === 'building') {
       const rk = feat.riskEvaluation;
+      const isHistoricalFlooded = feat.flooded;
+      const modeledWater = typeof feat.modeledWaterElev === 'number'
+        ? feat.modeledWaterElev
+        : (this.floodWaterManager ? Math.round(this.floodWaterManager.getWaterElevationAt(feat.center.x, feat.center.z) * 100) / 100 : null);
+
       if (rk) {
         const exp = rk.exposure || {};
         const acc = rk.access || {};
@@ -739,100 +869,149 @@ export class UIController {
         const isUnknown = risk.isUnknown || exp.category === 'UNKNOWN';
 
         let tagClass = 'success';
-        if (tier === 'CRITICAL') tagClass = 'danger';
-        else if (tier === 'HIGH') tagClass = 'danger';
+        if (tier === 'CRITICAL' || tier === 'HIGH') tagClass = 'danger';
         else if (tier === 'MODERATE') tagClass = 'warning';
         else if (tier === 'UNKNOWN') tagClass = 'info';
 
-        this.dom.inspectTag.className = `status-pill ${tagClass}`;
-        this.dom.inspectTag.textContent = `${tier} (${totalScore}/100)`;
+        if (this.dom.detailPanelTitle) this.dom.detailPanelTitle.textContent = `STRUCTURE ${feat.id}`;
+        if (this.dom.detailPanelBadge) {
+          this.dom.detailPanelBadge.className = `status-pill ${tagClass}`;
+          this.dom.detailPanelBadge.textContent = `${tier} (${totalScore}/100)`;
+        }
 
         const footprintPercent = Math.round((exp.affectedRatio || (depth > 0.05 ? 1.0 : 0.0)) * 100);
         const accessLabel = acc.status === 'route_lost'
           ? '<span class="chip-access-lost font-mono font-bold">ROUTE LOST (Flood Cut-Off)</span>'
           : acc.status === 'disconnected_in_source'
-          ? '<span class="chip-access-disc font-mono">DISCONNECTED IN SOURCE</span>'
+          ? '<span class="chip-access-source font-mono">DISCONNECTED IN SOURCE</span>'
           : acc.status === 'access_degraded'
-          ? '<span class="chip-access-deg font-mono">ACCESS DEGRADED</span>'
+          ? '<span class="chip-access-degraded font-mono">ACCESS DEGRADED</span>'
           : acc.status === 'unknown'
-          ? '<span class="chip-access-unk font-mono">UNKNOWN ACCESS</span>'
-          : '<span class="chip-access-conn font-mono">CONNECTED</span>';
+          ? '<span class="chip-road-unknown font-mono">UNKNOWN ACCESS</span>'
+          : '<span class="chip-access-connected font-mono">CONNECTED</span>';
 
         const shelterLabel = acc.canReachShelter
           ? `<span class="chip-prop-viable font-mono">${acc.nearestShelter?.name || 'Shelter'} (${(acc.shelterRouteStatus || 'DRY').toUpperCase()})</span>`
           : '<span class="chip-prop-flooded font-mono font-bold">NO REACHABLE SHELTER</span>';
 
         const warningHtml = isUnknown ? `
-          <div class="inspect-alert-box" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);padding:6px 8px;border-radius:4px;margin-bottom:8px;font-size:11px;color:#fca5a5;">
-            ⚠️ <strong>DATA QUALITY WARNING:</strong> Missing or NoData DGM1 bare-earth DEM elevation at structure centroid. Data uncertainty penalty (+30 pts) applied. Not treated as safe.
+          <div class="detail-alert-box warning">
+            ⚠️ <strong>DATA QUALITY WARNING:</strong> Missing or NoData DGM1 bare-earth DEM elevation at structure centroid. Data uncertainty penalty applied. Not treated as safe.
           </div>
         ` : '';
 
-        this.dom.inspectContent.innerHTML = `
-          <div class="inspect-card">
-            <div class="inspect-title-row">
-              <span class="inspect-title font-mono">Structure ${feat.id}</span>
-              <span class="score-badge ${totalScore >= 70 ? 'score-high' : totalScore >= 40 ? 'score-mid' : 'score-low'}">${totalScore}/100</span>
-            </div>
-
+        this.dom.detailPanelBody.innerHTML = `
+          <div class="detail-card">
             ${warningHtml}
 
-            <div class="risk-subscores-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin:6px 0 10px;padding:6px;background:rgba(255,255,255,0.03);border-radius:4px;border:1px solid rgba(255,255,255,0.06);font-size:11px;">
-              <div style="text-align:center;">
-                <div class="text-muted" style="font-size:10px;">Flood Exp</div>
-                <div class="font-mono font-bold ${sub.floodExposure >= 35 ? 'text-rose' : sub.floodExposure >= 20 ? 'text-amber' : 'text-emerald'}">${sub.floodExposure}/50</div>
-                <div class="text-muted" style="font-size:9px;">${exp.category || 'UNAFFECTED'}</div>
-              </div>
-              <div style="text-align:center;border-left:1px solid rgba(255,255,255,0.08);border-right:1px solid rgba(255,255,255,0.08);">
-                <div class="text-muted" style="font-size:10px;">Road Access</div>
-                <div class="font-mono font-bold ${sub.roadAccess >= 20 ? 'text-rose' : sub.roadAccess >= 12 ? 'text-amber' : 'text-emerald'}">${sub.roadAccess}/25</div>
-                <div class="text-muted" style="font-size:9px;">${acc.status ? acc.status.replace(/_/g, ' ') : 'connected'}</div>
-              </div>
-              <div style="text-align:center;">
-                <div class="text-muted" style="font-size:10px;">Services</div>
-                <div class="font-mono font-bold ${sub.emergencyService >= 20 ? 'text-rose' : sub.emergencyService >= 12 ? 'text-amber' : 'text-emerald'}">${sub.emergencyService}/25</div>
-                <div class="text-muted" style="font-size:9px;">${acc.canReachShelter ? 'Reachable' : 'Isolated'}</div>
-              </div>
-            </div>
-
-            <div class="inspect-meta-grid">
-              <div class="inspect-row">
-                <span class="inspect-label">Modeled Depth:</span>
-                <span class="inspect-val font-mono ${depth > 0.05 ? 'text-amber font-bold' : ''}">${isUnknown ? 'Unknown DEM' : depth > 0.05 ? `${depth.toFixed(2)} m` : '0.00 m (Dry)'}</span>
-              </div>
-              <div class="inspect-row">
-                <span class="inspect-label">Affected Footprint:</span>
-                <span class="inspect-val font-mono">${isUnknown ? 'Indeterminate' : `${footprintPercent}% (center)`}</span>
-              </div>
-              <div class="inspect-row">
-                <span class="inspect-label">Ground Base Elev:</span>
-                <span class="inspect-val font-mono">${isUnknown ? 'NoData' : `${feat.baseElevationM} m MSL`}</span>
-              </div>
-              <div class="inspect-row">
-                <span class="inspect-label">Road Network Access:</span>
-                <span class="inspect-val">${accessLabel}</span>
-              </div>
-              <div class="inspect-row">
-                <span class="inspect-label">Reachable Shelter:</span>
-                <span class="inspect-val">${shelterLabel}</span>
-              </div>
-              <div class="inspect-row">
-                <span class="inspect-label">Hospital Access:</span>
-                <span class="inspect-val text-muted" style="font-size:11px;">⚠️ No verified hospital in source data</span>
-              </div>
-              <div class="inspect-row">
-                <span class="inspect-label">Risk Justification:</span>
-                <span class="inspect-val text-muted font-mono" style="font-size:10px;line-height:1.3;">${risk.explanation || 'Evaluated'}</span>
+            <!-- Section 1: Overview -->
+            <div class="detail-section">
+              <div class="detail-section-title">OVERVIEW</div>
+              <div class="detail-meta-grid">
+                <div class="detail-row">
+                  <span class="detail-label">Structure ID:</span>
+                  <span class="detail-val font-mono font-bold">${feat.id}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Footprint Area:</span>
+                  <span class="detail-val font-mono">${feat.areaSqM} m²</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Ground Base Elev:</span>
+                  <span class="detail-val font-mono">${isUnknown ? 'NoData' : `${feat.baseElevationM} m MSL`}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Building Height:</span>
+                  <span class="detail-val">${feat.heightM || 7.0} m (~2 storeys)</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">SpaceNet 8 (Jul 2021):</span>
+                  <span class="detail-val">${isHistoricalFlooded ? '<span class="text-rose font-bold">Flooded Inundation</span>' : 'Dry / Non-Flooded'}</span>
+                </div>
               </div>
             </div>
 
-            <div class="inspect-route-actions">
-              <button class="inspect-route-btn btn-shelter" id="btn-card-shelter" ${!acc.canReachShelter ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>🏃 Evac to Shelter</button>
-              <button class="inspect-route-btn btn-hospital" id="btn-card-hospital">🏥 Route to Hospital</button>
+            <!-- Section 2: Flood Exposure -->
+            <div class="detail-section">
+              <div class="detail-section-title">FLOOD EXPOSURE</div>
+              <div class="detail-meta-grid">
+                <div class="detail-row">
+                  <span class="detail-label">Ground Water Depth:</span>
+                  <span class="detail-val font-mono ${depth > 0.05 ? 'text-amber font-bold' : ''}">${isUnknown ? 'Unknown DEM' : depth > 0.05 ? `${depth.toFixed(2)} m` : '0.00 m (Dry)'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Exposure Category:</span>
+                  <span class="detail-val font-mono">${exp.category || (depth >= 1.5 ? 'DEEP' : depth >= 0.5 ? 'MODERATE' : depth > 0.05 ? 'SHALLOW' : 'UNAFFECTED')}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Footprint Flooded:</span>
+                  <span class="detail-val font-mono">${isUnknown ? 'Indeterminate' : `${footprintPercent}%`}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Water Surface Elev:</span>
+                  <span class="detail-val font-mono">${modeledWater !== null ? `${modeledWater.toFixed(2)} m MSL` : 'Baseflow'}</span>
+                </div>
+              </div>
             </div>
 
-            <div class="inspect-disclaimer">
-              ⚠️ Conceptual decision-support indicator only. Not a validated life-safety probability or structural assessment. Ground-contact depth does not establish interior flooding.
+            <!-- Section 3: Risk Ranking & Subscores -->
+            <div class="detail-section">
+              <div class="detail-section-title">RISK EVALUATION (${totalScore}/100)</div>
+              <div class="risk-subscores-grid">
+                <div class="subscore-cell">
+                  <div class="subscore-lbl">Flood Exp</div>
+                  <div class="subscore-val ${sub.floodExposure >= 35 ? 'text-rose' : sub.floodExposure >= 20 ? 'text-amber' : 'text-emerald'}">${sub.floodExposure}/50</div>
+                  <div class="subscore-sub">${exp.category || 'DRY'}</div>
+                </div>
+                <div class="subscore-cell border-x">
+                  <div class="subscore-lbl">Road Access</div>
+                  <div class="subscore-val ${sub.roadAccess >= 20 ? 'text-rose' : sub.roadAccess >= 12 ? 'text-amber' : 'text-emerald'}">${sub.roadAccess}/25</div>
+                  <div class="subscore-sub">${acc.status ? acc.status.replace(/_/g, ' ') : 'connected'}</div>
+                </div>
+                <div class="subscore-cell">
+                  <div class="subscore-lbl">Services</div>
+                  <div class="subscore-val ${sub.emergencyService >= 20 ? 'text-rose' : sub.emergencyService >= 12 ? 'text-amber' : 'text-emerald'}">${sub.emergencyService}/25</div>
+                  <div class="subscore-sub">${acc.canReachShelter ? 'Reachable' : 'Isolated'}</div>
+                </div>
+              </div>
+              <div class="detail-meta-grid" style="margin-top:6px;">
+                <div class="detail-row">
+                  <span class="detail-label">Risk Justification:</span>
+                  <span class="detail-val text-muted font-mono" style="font-size:10px;line-height:1.3;">${risk.explanation || 'Evaluated scenario conditions'}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 4: Accessibility & Services -->
+            <div class="detail-section">
+              <div class="detail-section-title">ACCESSIBILITY & SERVICES</div>
+              <div class="detail-meta-grid">
+                <div class="detail-row">
+                  <span class="detail-label">Road Network Access:</span>
+                  <span class="detail-val">${accessLabel}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Nearest Shelter:</span>
+                  <span class="detail-val">${shelterLabel}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Hospital Route:</span>
+                  <span class="detail-val text-muted">⚠️ No verified hospital in source data</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 5: Data Quality & Disclaimers -->
+            <div class="detail-section data-quality-notice">
+              <div class="detail-disclaimer">
+                ⚠️ Conceptual decision-support indicator only. Ground-contact depth does not establish interior flooding, structural collapse, or calibrated life-safety probability. All facilities are simulated and unverified.
+              </div>
+            </div>
+
+            <!-- Section 6: Action Buttons -->
+            <div class="detail-actions">
+              <button class="detail-action-btn btn-shelter" id="btn-card-shelter" ${!acc.canReachShelter ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>🏃 Evac to Shelter</button>
+              <button class="detail-action-btn btn-hospital" id="btn-card-hospital">🏥 Route to Hospital</button>
             </div>
           </div>`;
 
@@ -840,11 +1019,9 @@ export class UIController {
         if (cardShelterBtn && acc.canReachShelter) cardShelterBtn.addEventListener('click', () => this.executeRoute('shelter'));
         const cardHospBtn = document.getElementById('btn-card-hospital');
         if (cardHospBtn) cardHospBtn.addEventListener('click', () => this.executeRoute('hospital'));
+
       } else {
-        const isHistoricalFlooded = feat.flooded;
-        const modeledWater = typeof feat.modeledWaterElev === 'number'
-          ? feat.modeledWaterElev
-          : (this.floodWaterManager ? Math.round(this.floodWaterManager.getWaterElevationAt(feat.center.x, feat.center.z) * 100) / 100 : null);
+        // Fallback for buildings without full risk evaluation
         const depth = typeof feat.currentWaterDepth === 'number'
           ? feat.currentWaterDepth
           : (modeledWater !== null ? Math.max(0, Math.round((modeledWater - feat.baseElevationM) * 100) / 100) : 0);
@@ -863,43 +1040,63 @@ export class UIController {
           tagClass = 'info';
         }
 
-        this.dom.inspectTag.className = `status-pill ${tagClass}`;
-        this.dom.inspectTag.textContent = depthBadge;
+        if (this.dom.detailPanelTitle) this.dom.detailPanelTitle.textContent = `STRUCTURE ${feat.id}`;
+        if (this.dom.detailPanelBadge) {
+          this.dom.detailPanelBadge.className = `status-pill ${tagClass}`;
+          this.dom.detailPanelBadge.textContent = depthBadge;
+        }
 
-        this.dom.inspectContent.innerHTML = `
-          <div class="inspect-card">
-            <div class="inspect-title-row">
-              <span class="inspect-title font-mono">Structure ${feat.id}</span>
-              <span class="inspect-val font-mono">${feat.areaSqM} m²</span>
+        this.dom.detailPanelBody.innerHTML = `
+          <div class="detail-card">
+            <div class="detail-section">
+              <div class="detail-section-title">OVERVIEW</div>
+              <div class="detail-meta-grid">
+                <div class="detail-row">
+                  <span class="detail-label">Structure ID:</span>
+                  <span class="detail-val font-mono font-bold">${feat.id}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Footprint Area:</span>
+                  <span class="detail-val font-mono">${feat.areaSqM} m²</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Ground Base Elev:</span>
+                  <span class="detail-val font-mono">${feat.baseElevationM} m MSL</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Building Height:</span>
+                  <span class="detail-val">${feat.heightM} m (2 storeys)</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">SpaceNet 8 (Jul 2021):</span>
+                  <span class="detail-val">${isHistoricalFlooded ? '<span class="text-rose font-bold">Flooded</span>' : 'Normal'}</span>
+                </div>
+              </div>
             </div>
-            <div class="inspect-meta-grid">
-              <div class="inspect-row">
-                <span class="inspect-label">Modeled Depth:</span>
-                <span class="inspect-val ${isSimFlooded ? 'text-amber' : ''}">${depth > 0.05 ? `${depth.toFixed(2)} m` : '0.00 m (Dry)'}</span>
-              </div>
-              <div class="inspect-row">
-                <span class="inspect-label">Base Elevation:</span>
-                <span class="inspect-val">${feat.baseElevationM} m MSL</span>
-              </div>
-              <div class="inspect-row">
-                <span class="inspect-label">Water Surface:</span>
-                <span class="inspect-val">${modeledWater !== null ? `${modeledWater.toFixed(2)} m MSL` : 'Off'}</span>
-              </div>
-              <div class="inspect-row">
-                <span class="inspect-label">SpaceNet 8 (Jul 2021):</span>
-                <span class="inspect-val">${isHistoricalFlooded ? 'Flooded' : 'Normal'}</span>
-              </div>
-              <div class="inspect-row">
-                <span class="inspect-label">Structure Height:</span>
-                <span class="inspect-val">${feat.heightM} m (2 storeys)</span>
+
+            <div class="detail-section">
+              <div class="detail-section-title">FLOOD EXPOSURE</div>
+              <div class="detail-meta-grid">
+                <div class="detail-row">
+                  <span class="detail-label">Modeled Water Depth:</span>
+                  <span class="detail-val ${isSimFlooded ? 'text-amber font-bold' : ''}">${depth > 0.05 ? `${depth.toFixed(2)} m` : '0.00 m (Dry)'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Water Surface Elev:</span>
+                  <span class="detail-val font-mono">${modeledWater !== null ? `${modeledWater.toFixed(2)} m MSL` : 'Baseflow'}</span>
+                </div>
               </div>
             </div>
-            <div class="inspect-route-actions">
-              <button class="inspect-route-btn btn-shelter" id="btn-card-shelter">🏃 Evac to Shelter</button>
-              <button class="inspect-route-btn btn-hospital" id="btn-card-hospital">🏥 Route to Hospital</button>
+
+            <div class="detail-section data-quality-notice">
+              <div class="detail-disclaimer">
+                ⚠️ Ground-contact depth only. Does not establish interior flooding, structural damage, or occupant risk.
+              </div>
             </div>
-            <div class="inspect-disclaimer">
-              ⚠️ Ground-contact depth only. Does not establish interior flooding, structural damage, or occupant risk.
+
+            <div class="detail-actions">
+              <button class="detail-action-btn btn-shelter" id="btn-card-shelter">🏃 Evac to Shelter</button>
+              <button class="detail-action-btn btn-hospital" id="btn-card-hospital">🏥 Route to Hospital</button>
             </div>
           </div>`;
 
@@ -908,13 +1105,14 @@ export class UIController {
         const cardHospBtn = document.getElementById('btn-card-hospital');
         if (cardHospBtn) cardHospBtn.addEventListener('click', () => this.executeRoute('hospital'));
       }
+
     } else if (feat.kind === 'road') {
       const isHistoricalFlooded = feat.flooded;
       const depth = typeof feat.maxWaterDepth === 'number' ? feat.maxWaterDepth : 0;
       const normalizedStatus = (feat.status || (depth > 0.15 ? 'impassable' : depth > 0 ? 'exposed' : 'unaffected')).toLowerCase();
 
       let tagClass = 'success';
-      let tagText = 'UNAFFECTED (DRY)';
+      let tagText = 'UNAFFECTED';
       if (normalizedStatus === 'impassable' || feat.passabilityStatus === 'submerged') {
         tagClass = 'danger';
         tagText = `IMPASSABLE (${depth.toFixed(2)}m)`;
@@ -926,8 +1124,11 @@ export class UIController {
         tagText = 'UNKNOWN ELEV';
       }
 
-      this.dom.inspectTag.className = `status-pill ${tagClass}`;
-      this.dom.inspectTag.textContent = tagText;
+      if (this.dom.detailPanelTitle) this.dom.detailPanelTitle.textContent = `ROAD ${feat.id}`;
+      if (this.dom.detailPanelBadge) {
+        this.dom.detailPanelBadge.className = `status-pill ${tagClass}`;
+        this.dom.detailPanelBadge.textContent = tagText;
+      }
 
       const elevRangeStr = feat.minElevation !== null && feat.minElevation !== undefined
         ? `${feat.minElevation.toFixed(1)}m – ${feat.maxElevation.toFixed(1)}m MSL`
@@ -935,62 +1136,85 @@ export class UIController {
 
       const exposedStr = typeof feat.exposedLengthMeters === 'number' && feat.exposedLengthMeters > 0
         ? `${feat.exposedLengthMeters.toFixed(1)} m (${Math.round((feat.exposedRatio || 0) * 100)}%)`
-        : '0.0 m (0%)';
+        : '0.0 m (0% - Dry)';
 
       const componentStr = feat.componentId
         ? `Component #${feat.componentId} (${feat.componentSize || 1} connected roads)`
-        : 'Segment isolated';
+        : 'Segment isolated in source';
 
       const statusReasonStr = feat.statusReason || (
         normalizedStatus === 'impassable'
-          ? `Estimated water depth (${depth.toFixed(2)}m) exceeds 0.15m impassability threshold`
+          ? `Estimated water depth (${depth.toFixed(2)}m) exceeds 0.15m conservative threshold`
           : normalizedStatus === 'exposed'
           ? `Estimated water depth (${depth.toFixed(2)}m) detected, below 0.15m threshold`
           : 'No positive water depth detected along road geometry (dry)'
       );
 
-      this.dom.inspectContent.innerHTML = `
-        <div class="inspect-card">
-          <div class="inspect-title-row">
-            <span class="inspect-title font-mono">Road Segment ${feat.id}</span>
-            <span class="inspect-val font-mono">${feat.lengthMeters} m</span>
-          </div>
-          <div class="inspect-meta-grid">
-            <div class="inspect-row">
-              <span class="inspect-label">Classification:</span>
-              <span class="inspect-val ${normalizedStatus === 'impassable' ? 'text-rose font-bold' : normalizedStatus === 'exposed' ? 'text-amber font-bold' : ''}">${normalizedStatus.toUpperCase()}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Max Est. Depth:</span>
-              <span class="inspect-val ${depth > 0 ? 'text-amber' : ''}">${depth > 0 ? `${depth.toFixed(2)} m` : '0.00 m (Dry)'}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Exposed Length:</span>
-              <span class="inspect-val">${exposedStr}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Elevation Range:</span>
-              <span class="inspect-val">${elevRangeStr}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Topology Group:</span>
-              <span class="inspect-val">${componentStr}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Reason / Assessment:</span>
-              <span class="inspect-val text-muted">${statusReasonStr}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">SpaceNet 8 (Jul 2021):</span>
-              <span class="inspect-val">${isHistoricalFlooded ? 'Flooded Cutoff' : 'Passable Route'}</span>
+      this.dom.detailPanelBody.innerHTML = `
+        <div class="detail-card">
+          <div class="detail-section">
+            <div class="detail-section-title">OVERVIEW</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Road ID:</span>
+                <span class="detail-val font-mono font-bold">${feat.id}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Segment Length:</span>
+                <span class="detail-val font-mono">${feat.lengthMeters} m</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Elevation Range:</span>
+                <span class="detail-val font-mono">${elevRangeStr}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">SpaceNet 8 (Jul 2021):</span>
+                <span class="detail-val">${isHistoricalFlooded ? '<span class="text-rose font-bold">Flooded Cutoff</span>' : 'Passable Route'}</span>
+              </div>
             </div>
           </div>
-          <div class="inspect-route-actions">
-            <button class="inspect-route-btn btn-shelter" id="btn-card-shelter-rd">🏃 Evac from Road</button>
-            <button class="inspect-route-btn btn-hospital" id="btn-card-hospital-rd">🏥 Route to Hospital</button>
+
+          <div class="detail-section">
+            <div class="detail-section-title">FLOOD STATUS & PASSABILITY</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Classification:</span>
+                <span class="detail-val ${normalizedStatus === 'impassable' ? 'text-rose font-bold' : normalizedStatus === 'exposed' ? 'text-amber font-bold' : 'text-emerald'}">${normalizedStatus.toUpperCase()}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Max Est. Depth:</span>
+                <span class="detail-val ${depth > 0 ? 'text-amber font-bold' : ''}">${depth > 0 ? `${depth.toFixed(2)} m` : '0.00 m (Dry)'}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Exposed Length:</span>
+                <span class="detail-val">${exposedStr}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Assessment Reason:</span>
+                <span class="detail-val text-muted" style="font-size:10px;line-height:1.3;">${statusReasonStr}</span>
+              </div>
+            </div>
           </div>
-          <div class="inspect-disclaimer">
-            ⚠️ Model-estimated terrain exposure based on DGM1 bare-earth LiDAR DEM. Does not predict water velocity or real-world road safety.
+
+          <div class="detail-section">
+            <div class="detail-section-title">TOPOLOGY & CONNECTIVITY</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Network Component:</span>
+                <span class="detail-val font-mono">${componentStr}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section data-quality-notice">
+            <div class="detail-disclaimer">
+              ⚠️ Model-estimated terrain exposure based on DGM1 bare-earth LiDAR DEM. Does not predict water velocity, debris obstruction, or bridge structural integrity.
+            </div>
+          </div>
+
+          <div class="detail-actions">
+            <button class="detail-action-btn btn-shelter" id="btn-card-shelter-rd">🏃 Evac from Road</button>
+            <button class="detail-action-btn btn-hospital" id="btn-card-hospital-rd">🏥 Route to Hospital</button>
           </div>
         </div>`;
 
@@ -1015,7 +1239,7 @@ export class UIController {
         tagText = 'SITE INUNDATED';
       } else if (status === 'isolated') {
         tagClass = 'info';
-        tagText = 'ISOLATED BY ROADS (DRY)';
+        tagText = 'ISOLATED BY ROADS';
       } else if (status === 'exposed') {
         tagClass = 'warning';
         tagText = 'CORRIDOR EXPOSED';
@@ -1027,10 +1251,13 @@ export class UIController {
         tagText = 'UNKNOWN ELEV';
       }
 
-      this.dom.inspectTag.className = `status-pill ${tagClass}`;
-      this.dom.inspectTag.textContent = tagText;
+      if (this.dom.detailPanelTitle) this.dom.detailPanelTitle.textContent = feat.name || 'EMERGENCY FACILITY';
+      if (this.dom.detailPanelBadge) {
+        this.dom.detailPanelBadge.className = `status-pill ${tagClass}`;
+        this.dom.detailPanelBadge.textContent = tagText;
+      }
 
-      const provenanceStr = '<span class="chip-prop-flooded font-mono" style="background:rgba(239,68,68,0.15);color:#fca5a5;padding:2px 6px;border-radius:4px;font-size:11px;">SIMULATED (UNVERIFIED)</span>';
+      const provenanceStr = '<span class="chip-prop-flooded font-mono" style="background:rgba(239,68,68,0.15);color:#fca5a5;padding:2px 6px;border-radius:4px;font-size:10px;">SIMULATED (UNVERIFIED)</span>';
 
       const siteStatusStr = isSiteInundated
         ? `<span class="chip-prop-flooded font-mono font-bold">SUBMERGED (${depth.toFixed(2)}m depth)</span>`
@@ -1039,44 +1266,67 @@ export class UIController {
       const corridorStr = status === 'isolated'
         ? '<span class="chip-access-lost font-mono font-bold">ISOLATED (Connecting roads submerged)</span>'
         : status === 'exposed'
-        ? '<span class="chip-access-deg font-mono">EXPOSED (Shallow flood water <0.15m)</span>'
+        ? '<span class="chip-access-degraded font-mono">EXPOSED (Shallow water &lt;0.15m)</span>'
         : status === 'disconnected'
-        ? '<span class="chip-access-disc font-mono">DISCONNECTED FROM ROADS</span>'
-        : '<span class="chip-access-conn font-mono">DRY PASSABLE CORRIDOR</span>';
+        ? '<span class="chip-access-source font-mono">DISCONNECTED FROM ROADS</span>'
+        : '<span class="chip-access-connected font-mono">DRY PASSABLE CORRIDOR</span>';
 
-      this.dom.inspectContent.innerHTML = `
-        <div class="inspect-card">
-          <div class="inspect-title-row">
-            <span class="inspect-title font-mono">${feat.name}</span>
-            <span class="inspect-val font-mono">${feat.id}</span>
-          </div>
-          <div class="inspect-meta-grid">
-            <div class="inspect-row">
-              <span class="inspect-label">Provenance:</span>
-              <span class="inspect-val">${provenanceStr}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Site Inundation:</span>
-              <span class="inspect-val">${siteStatusStr}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Road Corridor:</span>
-              <span class="inspect-val">${corridorStr}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Ground / Water:</span>
-              <span class="inspect-val font-mono">${gElev !== null ? `${gElev.toFixed(1)}m` : 'NoData'} / ${wElev.toFixed(1)}m MSL</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Road Connection:</span>
-              <span class="inspect-val font-mono text-muted">${sev?.roadNodeId ? `Node ${sev.roadNodeId}` : feat.nearbyRoadStatus || 'Evaluated'}</span>
+      this.dom.detailPanelBody.innerHTML = `
+        <div class="detail-card">
+          <div class="detail-section">
+            <div class="detail-section-title">OVERVIEW</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Facility ID:</span>
+                <span class="detail-val font-mono">${feat.id}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Facility Type:</span>
+                <span class="detail-val font-mono">${(feat.type || 'shelter').toUpperCase()}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Dataset Provenance:</span>
+                <span class="detail-val">${provenanceStr}</span>
+              </div>
             </div>
           </div>
-          <div class="inspect-route-actions">
-            <button class="inspect-route-btn btn-shelter" id="btn-card-shelter-fac" ${isSiteInundated ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>🏃 Route to this Facility</button>
+
+          <div class="detail-section">
+            <div class="detail-section-title">FLOOD EXPOSURE</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Site Inundation:</span>
+                <span class="detail-val">${siteStatusStr}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Ground / Water MSL:</span>
+                <span class="detail-val font-mono">${gElev !== null ? `${gElev.toFixed(1)}m` : 'NoData'} / ${wElev.toFixed(1)}m</span>
+              </div>
+            </div>
           </div>
-          <div class="inspect-disclaimer">
-            ⚠️ SIMULATED EMERGENCY FACILITY: Unverified facility record from scenario dataset. Not an officially verified municipal shelter or hospital. Never treated as verified safety infrastructure.
+
+          <div class="detail-section">
+            <div class="detail-section-title">ACCESSIBILITY</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Road Corridor:</span>
+                <span class="detail-val">${corridorStr}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Nearby Road Node:</span>
+                <span class="detail-val font-mono text-muted">${sev?.roadNodeId ? `Node ${sev.roadNodeId}` : feat.nearbyRoadStatus || 'Evaluated'}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section data-quality-notice">
+            <div class="detail-disclaimer">
+              ⚠️ SIMULATED EMERGENCY FACILITY: Unverified facility record from research scenario dataset. Not an officially verified municipal shelter or hospital. Never treated as verified safety infrastructure.
+            </div>
+          </div>
+
+          <div class="detail-actions">
+            <button class="detail-action-btn btn-shelter" id="btn-card-shelter-fac" ${isSiteInundated ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>🏃 Route to this Facility</button>
           </div>
         </div>`;
 
@@ -1093,6 +1343,104 @@ export class UIController {
           }], { routeType: 'shelter' });
         });
       }
+
+    } else if (feat.kind === 'flood-extent') {
+      if (this.dom.detailPanelTitle) this.dom.detailPanelTitle.textContent = 'HISTORICAL FLOOD EXTENT';
+      if (this.dom.detailPanelBadge) {
+        this.dom.detailPanelBadge.className = 'status-pill danger';
+        this.dom.detailPanelBadge.textContent = 'JULY 2021 DISASTER';
+      }
+
+      this.dom.detailPanelBody.innerHTML = `
+        <div class="detail-card">
+          <div class="detail-section">
+            <div class="detail-section-title">EVENT OVERVIEW</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Event:</span>
+                <span class="detail-val font-bold text-rose">Ahr Valley Catastrophic Flash Flood</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Date of Disaster:</span>
+                <span class="detail-val font-mono">14–15 July 2021</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Study Location:</span>
+                <span class="detail-val">Dernau, Rhineland-Palatinate (DE)</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Primary Source:</span>
+                <span class="detail-val font-mono text-cyan">Copernicus EMS (EMSR517) / SpaceNet 8</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <div class="detail-section-title">OBSERVED MUNICIPAL IMPACT</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Inundated Buildings:</span>
+                <span class="detail-val font-mono font-bold text-amber">485 of 759 structures (~64%)</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Flooded Cut-Off Roads:</span>
+                <span class="detail-val font-mono font-bold text-rose">42 of 117 road segments (~36%)</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Observed Crest Elev:</span>
+                <span class="detail-val font-mono">~130.0m – 135.0m MSL</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section data-quality-notice">
+            <div class="detail-disclaimer">
+              ℹ️ Verified disaster extent delineated from multi-temporal Sentinel-1 SAR and Sentinel-2 optical satellite imagery, aerial ortho-imagery, and official Copernicus Emergency Management Service crisis maps.
+            </div>
+          </div>
+        </div>`;
+
+    } else if (feat.kind === 'flood-water') {
+      const curLvl = feat.waterLevel ?? (this.floodWaterManager ? this.floodWaterManager.currentWaterLevel : 124.0);
+      const isExtreme = curLvl >= 132.0;
+
+      if (this.dom.detailPanelTitle) this.dom.detailPanelTitle.textContent = 'SIMULATED FLOOD SURFACE';
+      if (this.dom.detailPanelBadge) {
+        this.dom.detailPanelBadge.className = `status-pill ${isExtreme ? 'danger' : 'info'}`;
+        this.dom.detailPanelBadge.textContent = `${curLvl.toFixed(2)} m MSL`;
+      }
+
+      this.dom.detailPanelBody.innerHTML = `
+        <div class="detail-card">
+          <div class="detail-section">
+            <div class="detail-section-title">SIMULATION SCENARIO</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Water Stage:</span>
+                <span class="detail-val font-mono font-bold text-cyan">${curLvl.toFixed(2)} m MSL</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Longitudinal Profile:</span>
+                <span class="detail-val">${feat.profileMode || 'Slope-Aware (Ahr Thalweg Monotonic Gradient)'}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Hydraulic Connectivity:</span>
+                <span class="detail-val">${feat.hydraulicallyConnected || 'Connected to Riverbed'}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Study Valley Bounds:</span>
+                <span class="detail-val font-mono">120.00m (Downstream) – 155.00m (Crest)</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section data-quality-notice">
+            <div class="detail-disclaimer">
+              ⚠️ CONCEPTUAL TERRAIN MASK: Dynamic elevation-aware surface calibrated against Rhineland-Palatinate DGM1 bare-earth LiDAR DEM. Not a 2D hydrodynamic Saint-Venant simulation. Does not model time-dependent wave propagation, breach dynamics, or flow velocity.
+            </div>
+          </div>
+        </div>`;
+
     } else if (feat.kind === 'cluster') {
       const cluster = feat.cluster || {};
       const exp = cluster.exposureCounts || {};
@@ -1100,64 +1448,74 @@ export class UIController {
       const isConnected = cluster.isConnectedToRoads !== false;
 
       let tagClass = 'warning';
-      if (dominant === 'CRITICAL') tagClass = 'danger';
-      else if (dominant === 'HIGH') tagClass = 'danger';
+      if (dominant === 'CRITICAL' || dominant === 'HIGH') tagClass = 'danger';
       else if (dominant === 'MODERATE') tagClass = 'warning';
       else if (dominant === 'LOW') tagClass = 'info';
 
-      this.dom.inspectTag.className = `status-pill ${tagClass}`;
-      this.dom.inspectTag.textContent = `CLUSTER (${dominant})`;
+      if (this.dom.detailPanelTitle) this.dom.detailPanelTitle.textContent = `CLUSTER ${feat.name || cluster.id}`;
+      if (this.dom.detailPanelBadge) {
+        this.dom.detailPanelBadge.className = `status-pill ${tagClass}`;
+        this.dom.detailPanelBadge.textContent = `CLUSTER (${dominant})`;
+      }
 
       const roadAccessBadge = isConnected
         ? `<span class="chip-prop-viable font-bold font-mono">CONNECTED (${cluster.nearestRoadNode ? cluster.nearestRoadNode.id : 'Active'})</span>`
-        : `<span class="chip-prop-flooded font-bold font-mono">UNCONNECTED (>160m)</span>`;
+        : `<span class="chip-prop-flooded font-bold font-mono">UNCONNECTED (&gt;160m)</span>`;
 
       const breakdownHtml = `
         <div class="exposure-breakdown-chips">
           ${exp.CRITICAL ? `<span class="chip-cluster-crit font-mono">Crit: ${exp.CRITICAL}</span>` : ''}
           ${exp.HIGH ? `<span class="chip-cluster-high font-mono">High: ${exp.HIGH}</span>` : ''}
           ${exp.MODERATE ? `<span class="chip-cluster-mod font-mono">Mod: ${exp.MODERATE}</span>` : ''}
-          ${exp.LOW ? `<span class="chip-cluster-low font-mono" style="background:rgba(59,130,246,0.2);color:#93c5fd;padding:2px 6px;border-radius:4px;font-size:11px;">Low: ${exp.LOW}</span>` : ''}
-          ${exp.UNKNOWN ? `<span class="chip-cluster-unknown font-mono" style="background:rgba(156,163,175,0.2);color:#d1d5db;padding:2px 6px;border-radius:4px;font-size:11px;">Unk: ${exp.UNKNOWN}</span>` : ''}
+          ${exp.LOW ? `<span class="chip-cluster-low font-mono" style="background:rgba(59,130,246,0.2);color:#93c5fd;padding:2px 6px;border-radius:4px;font-size:10px;">Low: ${exp.LOW}</span>` : ''}
+          ${exp.UNKNOWN ? `<span class="chip-road-unknown font-mono" style="background:rgba(156,163,175,0.2);color:#d1d5db;padding:2px 6px;border-radius:4px;font-size:10px;">Unk: ${exp.UNKNOWN}</span>` : ''}
         </div>
       `;
 
-      this.dom.inspectContent.innerHTML = `
-        <div class="inspect-card">
-          <div class="inspect-title-row">
-            <span class="inspect-title font-mono">${feat.name || cluster.id}</span>
-            <span class="inspect-val font-mono">${cluster.buildingCount || 0} structures</span>
+      this.dom.detailPanelBody.innerHTML = `
+        <div class="detail-card">
+          <div class="detail-section">
+            <div class="detail-section-title">CLUSTER OVERVIEW</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Structures Count:</span>
+                <span class="detail-val font-mono font-bold">${cluster.buildingCount || 0} buildings</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Estimated Occupancy:</span>
+                <span class="detail-val font-mono font-bold text-amber">${cluster.estimatedPopulation || 0} persons</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Cluster Radius:</span>
+                <span class="detail-val font-mono">${Math.round(cluster.radiusM || 0)} m</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Road Network Access:</span>
+                <span class="detail-val">${roadAccessBadge}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Access Assessment:</span>
+                <span class="detail-val text-muted">${cluster.originStatusText || 'Evaluated'}</span>
+              </div>
+            </div>
           </div>
-          <div class="inspect-meta-grid">
-            <div class="inspect-row">
-              <span class="inspect-label">Exposure Breakdown:</span>
-              <span class="inspect-val">${breakdownHtml}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Estimated Occupancy:</span>
-              <span class="inspect-val font-mono font-bold">${cluster.estimatedPopulation || 0} persons</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Cluster Radius:</span>
-              <span class="inspect-val">${Math.round(cluster.radiusM || 0)} m</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Road Network Access:</span>
-              <span class="inspect-val">${roadAccessBadge}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Access Status:</span>
-              <span class="inspect-val text-muted">${cluster.originStatusText || 'Evaluated'}</span>
+
+          <div class="detail-section">
+            <div class="detail-section-title">EXPOSURE BREAKDOWN</div>
+            <div style="margin-top:4px;">${breakdownHtml}</div>
+          </div>
+
+          <div class="detail-section data-quality-notice">
+            <div class="detail-disclaimer">
+              ${isConnected
+                ? 'ℹ️ Evacuation route calculated from verified road access node near cluster boundary.'
+                : '⚠️ Approximate / unconnected origin. Distance to verified road network exceeds 160m threshold. No road connection fabricated.'}
             </div>
           </div>
-          <div class="inspect-route-actions">
-            <button class="inspect-route-btn btn-shelter" id="btn-card-shelter-cl" ${!isConnected ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>🏃 Evac Cluster to Shelter</button>
-            <button class="inspect-route-btn btn-hospital" id="btn-card-hospital-cl" ${!isConnected ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>🏥 Route Cluster to Hospital</button>
-          </div>
-          <div class="inspect-disclaimer">
-            ${isConnected
-              ? 'ℹ️ Evacuation route calculated from verified road access node near cluster boundary.'
-              : '⚠️ Approximate / unconnected origin. Distance to verified road network exceeds 160m threshold. No road connection fabricated.'}
+
+          <div class="detail-actions">
+            <button class="detail-action-btn btn-shelter" id="btn-card-shelter-cl" ${!isConnected ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>🏃 Evac Cluster to Shelter</button>
+            <button class="detail-action-btn btn-hospital" id="btn-card-hospital-cl" ${!isConnected ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>🏥 Route Cluster to Hospital</button>
           </div>
         </div>`;
 
@@ -1182,11 +1540,14 @@ export class UIController {
         tagText = `UNVIABLE (${score}/100)`;
       }
 
-      this.dom.inspectTag.className = `status-pill ${tagClass}`;
-      this.dom.inspectTag.textContent = tagText;
+      if (this.dom.detailPanelTitle) this.dom.detailPanelTitle.textContent = ev.name || feat.name || 'PROPOSED SITE';
+      if (this.dom.detailPanelBadge) {
+        this.dom.detailPanelBadge.className = `status-pill ${tagClass}`;
+        this.dom.detailPanelBadge.textContent = tagText;
+      }
 
       const bd = ev.scoreBreakdown || { clearanceScore: 0, roadScore: 0, slopeScore: 0, proximityScore: 0 };
-      const breakdownText = `Clearance: ${bd.clearanceScore}/40 | Road: ${bd.roadScore}/30 | Slope: ${bd.slopeScore}/15 | Proximity: ${bd.proximityScore}/15`;
+      const breakdownText = `Clearance: ${bd.clearanceScore}/40 · Road: ${bd.roadScore}/30 · Slope: ${bd.slopeScore}/15 · Proximity: ${bd.proximityScore}/15`;
 
       const clearanceStr = isFlooded
         ? `<span class="chip-prop-flooded font-mono font-bold">SUBMERGED (${Math.abs(ev.clearanceAboveWater || 0).toFixed(1)}m below water)</span>`
@@ -1196,51 +1557,50 @@ export class UIController {
         ? `<span class="chip-prop-viable font-mono">CONNECTED (${Math.round(ev.roadDistanceM || 0)}m)</span>`
         : `<span class="chip-prop-flooded font-mono">DISCONNECTED</span>`;
 
-      this.dom.inspectContent.innerHTML = `
-        <div class="inspect-card">
-          <div class="inspect-title-row">
-            <span class="inspect-title font-mono">${ev.name || feat.name}</span>
-            <span class="score-badge ${score >= 70 ? 'score-high' : score >= 40 ? 'score-mid' : 'score-low'}">${score}/100</span>
-          </div>
-          <div class="inspect-meta-grid">
-            <div class="inspect-row">
-              <span class="inspect-label">Facility Category:</span>
-              <span class="inspect-val font-mono">${ev.type === 'shelter' ? 'Proposed Shelter Candidate' : 'Proposed Medical Response Point'}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Estimated Capacity:</span>
-              <span class="inspect-val font-mono">${ev.capacityEst || 0} evacuees</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Water Clearance:</span>
-              <span class="inspect-val">${clearanceStr}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Ground / Water MSL:</span>
-              <span class="inspect-val font-mono">${(ev.groundElevation || 0).toFixed(1)}m / ${(ev.waterElevation || 0).toFixed(1)}m</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Terrain Slope:</span>
-              <span class="inspect-val font-mono">${(ev.slopeDeg || 0).toFixed(1)}° (${ev.slopeDeg < 5 ? 'Gentle' : ev.slopeDeg < 12 ? 'Moderate' : 'Steep'})</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Road Network Access:</span>
-              <span class="inspect-val">${roadStatusStr}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Score Breakdown:</span>
-              <span class="inspect-val text-muted font-mono" style="font-size:11px;">${breakdownText}</span>
-            </div>
-            <div class="inspect-row">
-              <span class="inspect-label">Assessment:</span>
-              <span class="inspect-val text-muted">${ev.statusReason || 'Evaluated'}</span>
+      this.dom.detailPanelBody.innerHTML = `
+        <div class="detail-card">
+          <div class="detail-section">
+            <div class="detail-section-title">SITE SUITABILITY (${score}/100)</div>
+            <div class="detail-meta-grid">
+              <div class="detail-row">
+                <span class="detail-label">Designated Role:</span>
+                <span class="detail-val font-mono">${ev.type === 'shelter' ? 'Proposed Shelter Candidate' : 'Proposed Medical Response Point'}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Est. Evacuee Capacity:</span>
+                <span class="detail-val font-mono font-bold">${ev.capacityEst || 0} persons</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Water Clearance:</span>
+                <span class="detail-val">${clearanceStr}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Ground / Water MSL:</span>
+                <span class="detail-val font-mono">${(ev.groundElevation || 0).toFixed(1)}m / ${(ev.waterElevation || 0).toFixed(1)}m</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Terrain Slope:</span>
+                <span class="detail-val font-mono">${(ev.slopeDeg || 0).toFixed(1)}° (${ev.slopeDeg < 5 ? 'Gentle' : ev.slopeDeg < 12 ? 'Moderate' : 'Steep'})</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Road Network Access:</span>
+                <span class="detail-val">${roadStatusStr}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Score Breakdown:</span>
+                <span class="detail-val text-muted font-mono" style="font-size:10px;">${breakdownText}</span>
+              </div>
             </div>
           </div>
-          <div class="inspect-route-actions">
-            <button class="inspect-route-btn btn-shelter" id="btn-card-route-prop" ${!isViable ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>🏃 Route to Candidate Site</button>
+
+          <div class="detail-section data-quality-notice">
+            <div class="detail-disclaimer">
+              ⚠️ PROPOSED CANDIDATE ONLY: Unverified conceptual site for scenario modeling. Not an officially approved municipal emergency facility.
+            </div>
           </div>
-          <div class="inspect-disclaimer">
-            ⚠️ PROPOSED CANDIDATE ONLY: Unverified conceptual site for scenario modeling. Not an officially approved municipal emergency facility.
+
+          <div class="detail-actions">
+            <button class="detail-action-btn btn-shelter" id="btn-card-route-prop" ${!isViable ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>🏃 Route to Candidate Site</button>
           </div>
         </div>`;
 
@@ -1250,6 +1610,34 @@ export class UIController {
           this.routeToCandidateSite(ev);
         });
       }
+
+    } else {
+      // Generic fallback for any other selectable map items
+      const title = feat.name || feat.id || 'MAP FEATURE';
+      if (this.dom.detailPanelTitle) this.dom.detailPanelTitle.textContent = title;
+      if (this.dom.detailPanelBadge) {
+        this.dom.detailPanelBadge.className = 'status-pill info';
+        this.dom.detailPanelBadge.textContent = (feat.kind || 'FEATURE').toUpperCase();
+      }
+
+      const rows = Object.entries(feat)
+        .filter(([k, v]) => !['boxes', 'points', 'vertexStart', 'vertexCount', 'center', 'bounds', 'kind'].includes(k) && typeof v !== 'function' && typeof v !== 'object')
+        .map(([k, v]) => `
+          <div class="detail-row">
+            <span class="detail-label">${k}:</span>
+            <span class="detail-val font-mono">${v}</span>
+          </div>
+        `).join('');
+
+      this.dom.detailPanelBody.innerHTML = `
+        <div class="detail-card">
+          <div class="detail-section">
+            <div class="detail-section-title">ATTRIBUTES</div>
+            <div class="detail-meta-grid">
+              ${rows || '<div class="detail-row"><span class="detail-label">Status:</span><span class="detail-val">Selected</span></div>'}
+            </div>
+          </div>
+        </div>`;
     }
   }
 
@@ -1383,20 +1771,20 @@ export class UIController {
   }
 
   /**
-   * Render Route Summary Card into the Feature Inspector HUD.
+   * Render Route Summary Card into the Feature Details panel.
    * @param {Object} route
    * @param {Object} [alt]
    */
   renderRouteSummary(route, alt = null) {
-    if (!this.dom.inspectContent || !this.dom.inspectTag) return;
-    if (this.dom.hudInspector) this.dom.hudInspector.classList.add('active');
+    if (!this.dom.hudFeatureDetails || !this.dom.detailPanelBody) return;
+    this.dom.hudFeatureDetails.classList.remove('hidden');
 
     const isHospital = route.routeType === 'hospital';
     const isBlocked = !route.isReachable || route.status === 'blocked';
     const isExposed = route.status === 'exposed';
 
     let tagClass = 'success';
-    let tagText = isHospital ? 'HOSPITAL ROUTE' : 'SHELTER EVAC ROUTE';
+    let tagText = isHospital ? 'HOSPITAL ROUTE' : 'SHELTER EVAC';
     if (isBlocked) {
       tagClass = 'danger';
       tagText = 'ROUTE BLOCKED';
@@ -1405,8 +1793,13 @@ export class UIController {
       tagText = 'EXPOSED ROUTE';
     }
 
-    this.dom.inspectTag.className = `status-pill ${tagClass}`;
-    this.dom.inspectTag.textContent = tagText;
+    if (this.dom.detailPanelTitle) {
+      this.dom.detailPanelTitle.textContent = isHospital ? 'MEDICAL ROUTE' : 'SHELTER EVACUATION';
+    }
+    if (this.dom.detailPanelBadge) {
+      this.dom.detailPanelBadge.className = `status-pill ${tagClass}`;
+      this.dom.detailPanelBadge.textContent = tagText;
+    }
 
     const destName = route.destination?.name || (isHospital ? 'Hospital' : 'Shelter');
     const isSimulated = route.destination?.provenance === 'simulated';
@@ -1429,56 +1822,65 @@ export class UIController {
       const diffM = Math.round(alt.totalDistanceMeters - route.totalDistanceMeters);
       const sign = diffM >= 0 ? `+${diffM}m` : `${diffM}m`;
       altHtml = `
-        <div class="inspect-row">
-          <span class="inspect-label">Alternative Path:</span>
-          <span class="inspect-val">${alt.totalDistanceMeters.toFixed(0)}m (${sign}) [${alt.status.toUpperCase()}]</span>
+        <div class="detail-row">
+          <span class="detail-label">Alternative Path:</span>
+          <span class="detail-val">${alt.totalDistanceMeters.toFixed(0)}m (${sign}) [${alt.status.toUpperCase()}]</span>
         </div>`;
     }
 
-    this.dom.inspectContent.innerHTML = `
-      <div class="inspect-card">
-        <div class="inspect-title-row">
-          <span class="inspect-title font-mono">${isHospital ? '🏥 Medical Route' : '🏃 Shelter Evac Route'}</span>
-          <span class="inspect-val font-mono">${distanceStr}</span>
-        </div>
-        <div class="inspect-meta-grid">
-          <div class="inspect-row">
-            <span class="inspect-label">Destination:</span>
-            <span class="inspect-val font-bold ${isHospital ? 'text-cyan' : 'text-purple'}">${destVerificationLabel}</span>
-          </div>
-          <div class="inspect-row">
-            <span class="inspect-label">Origin:</span>
-            <span class="inspect-val">${route.origin?.name || 'Selected Origin'}</span>
-          </div>
-          <div class="inspect-row">
-            <span class="inspect-label">Route Status:</span>
-            <span class="inspect-val font-bold ${isBlocked ? 'text-rose' : isExposed ? 'text-amber' : 'text-emerald'}">${route.status.toUpperCase()}</span>
-          </div>
-          <div class="inspect-row">
-            <span class="inspect-label">Path Length:</span>
-            <span class="inspect-val">${distanceStr} (${segmentsStr})</span>
-          </div>
-          <div class="inspect-row">
-            <span class="inspect-label">Water Exposure:</span>
-            <span class="inspect-val ${isExposed ? 'text-amber' : ''}">${exposureStr}</span>
-          </div>
-          <div class="inspect-row">
-            <span class="inspect-label">Max Road Depth:</span>
-            <span class="inspect-val">${maxDepthStr}</span>
-          </div>
-          ${altHtml}
-          <div class="inspect-row">
-            <span class="inspect-label">Assessment:</span>
-            <span class="inspect-val text-muted">${route.explanation}</span>
+    this.dom.detailPanelBody.innerHTML = `
+      <div class="detail-card">
+        <div class="detail-section">
+          <div class="detail-section-title">ROUTE OVERVIEW</div>
+          <div class="detail-meta-grid">
+            <div class="detail-row">
+              <span class="detail-label">Destination:</span>
+              <span class="detail-val font-bold ${isHospital ? 'text-cyan' : 'text-purple'}">${destVerificationLabel}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Origin:</span>
+              <span class="detail-val">${route.origin?.name || 'Selected Origin'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Route Status:</span>
+              <span class="detail-val font-bold ${isBlocked ? 'text-rose' : isExposed ? 'text-amber' : 'text-emerald'}">${route.status.toUpperCase()}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Path Length:</span>
+              <span class="detail-val">${distanceStr} (${segmentsStr})</span>
+            </div>
           </div>
         </div>
-        <div class="inspect-route-actions">
-          <button class="inspect-route-btn btn-shelter" id="btn-inspect-evac">🏃 Evac Shelter</button>
-          <button class="inspect-route-btn btn-hospital" id="btn-inspect-med">🏥 Hospital</button>
-          <button class="inspect-route-btn btn-clear" id="btn-inspect-clear">✕ Clear</button>
+
+        <div class="detail-section">
+          <div class="detail-section-title">FLOOD CONDITIONS</div>
+          <div class="detail-meta-grid">
+            <div class="detail-row">
+              <span class="detail-label">Water Exposure:</span>
+              <span class="detail-val ${isExposed ? 'text-amber' : ''}">${exposureStr}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Max Road Depth:</span>
+              <span class="detail-val">${maxDepthStr}</span>
+            </div>
+            ${altHtml}
+            <div class="detail-row">
+              <span class="detail-label">Assessment:</span>
+              <span class="detail-val text-muted" style="font-size:10px;line-height:1.3;">${route.explanation}</span>
+            </div>
+          </div>
         </div>
-        <div class="inspect-disclaimer">
-          ⚠️ Conceptual elevation-based path reachability model. Does not guarantee hydrodynamic safety, flow velocity limits, or physical road structural integrity.
+
+        <div class="detail-section data-quality-notice">
+          <div class="detail-disclaimer">
+            ⚠️ Conceptual elevation-based path reachability model. Does not guarantee hydrodynamic safety, flow velocity limits, or physical road structural integrity.
+          </div>
+        </div>
+
+        <div class="detail-actions">
+          <button class="detail-action-btn btn-shelter" id="btn-inspect-evac">🏃 Evac Shelter</button>
+          <button class="detail-action-btn btn-hospital" id="btn-inspect-med">🏥 Hospital</button>
+          <button class="detail-action-btn btn-clear" id="btn-inspect-clear">✕ Clear</button>
         </div>
       </div>`;
 
@@ -1491,6 +1893,7 @@ export class UIController {
     const btnClear = document.getElementById('btn-inspect-clear');
     if (btnClear) btnClear.addEventListener('click', () => {
       if (this.overlayManager) this.overlayManager.clearRoute();
+      this.deselectFeature();
     });
   }
 
@@ -1505,13 +1908,13 @@ export class UIController {
 
     this.telemetry.update(camTelemetry, renderDiagnostics, surfaceIntersection);
 
-    // Feature inspection raycasting (throttled to ~15Hz)
+    // Update cursor style when hovering over interactive 3D assets (throttled to ~15Hz)
     const now = performance.now();
     if (this.overlayManager && now - this.lastInspectUpdate > 65) {
       this.lastInspectUpdate = now;
-      if (!this.selectedFeature) {
-        const hovered = this.overlayManager.inspectFeature(mouseNdc, this.viewer.camera);
-        this.renderFeatureInspection(hovered);
+      const hovered = this.overlayManager.inspectFeature(mouseNdc, this.viewer.camera);
+      if (this.dom.viewportContainer) {
+        this.dom.viewportContainer.style.cursor = hovered ? 'pointer' : '';
       }
     }
   }
@@ -1757,9 +2160,7 @@ export class UIController {
       kind: 'building',
       riskEvaluation: evalData,
     };
-    this.selectedFeature = featToInspect;
-    this.overlayManager.highlightBuilding(id);
-    this.renderFeatureInspection(featToInspect);
+    this.selectFeature(featToInspect);
 
     // Highlight active row in risk list
     if (this.dom.riskListContainer) {
@@ -1869,28 +2270,167 @@ export class UIController {
   }
 
   /**
-   * Populate baseline and comparison target scenario dropdowns.
+   * Populate baseline and comparison target scenario dropdowns dynamically.
+   * Displays scenario name and water level in metres MSL for all selectors.
    */
   populateScenarioDropdowns() {
-    if (!this.dom.selectCompareBaseline || !this.dom.selectCompareTarget) return;
     const scenarios = this.scenarioManager.getScenarios();
-    const currentBase = this.overlayManager?.scenarioComparisonService?.baselineWaterLevel ?? 124.0;
-    const currentLevel = this.getCurrentWaterLevel() ?? 124.0;
+    if (!scenarios || scenarios.length === 0) return;
 
-    const baseOpts = scenarios.map(s => `
-      <option value="${s.id}" ${Math.abs(s.waterLevel - currentBase) < 0.05 ? 'selected' : ''}>
-        ${s.name} (${s.waterLevel.toFixed(1)}m)
-      </option>
-    `).join('');
+    // Pick reasonable defaults: Scenario A = first scenario, Scenario B = second scenario (or last if >=2)
+    const defaultA = scenarios[0]?.id;
+    const defaultB = scenarios.length > 1 ? scenarios[1]?.id : scenarios[0]?.id;
 
-    const targetOpts = scenarios.map(s => `
-      <option value="${s.id}" ${Math.abs(s.waterLevel - currentLevel) < 0.05 ? 'selected' : ''}>
-        ${s.name} (${s.waterLevel.toFixed(1)}m)
-      </option>
-    `).join('');
+    const buildOpts = (selectedId) => {
+      return scenarios.map(s => {
+        const levelStr = `${s.waterLevel.toFixed(1)}m MSL`;
+        const displayName = s.name.includes('MSL') ? s.name : `${s.name} (${levelStr})`;
+        const isSel = s.id === selectedId;
+        return `<option value="${s.id}" title="${escapeHTML(displayName)}" ${isSel ? 'selected' : ''}>${escapeHTML(displayName)}</option>`;
+      }).join('');
+    };
 
-    this.dom.selectCompareBaseline.innerHTML = baseOpts;
-    this.dom.selectCompareTarget.innerHTML = targetOpts;
+    // Determine current selections or fall back to defaults
+    let currentA = this.dom.hudSelectScenA?.value || this.dom.selectCompareBaseline?.value || defaultA;
+    let currentB = this.dom.hudSelectScenB?.value || this.dom.selectCompareTarget?.value || defaultB;
+
+    // Verify current selections exist in available scenarios
+    if (!scenarios.some(s => s.id === currentA)) currentA = defaultA;
+    if (!scenarios.some(s => s.id === currentB)) currentB = defaultB;
+
+    // If both currently match but we have at least 2 scenarios, assign distinct defaults
+    if (currentA === currentB && scenarios.length > 1) {
+      currentB = scenarios.find(s => s.id !== currentA)?.id || currentB;
+    }
+
+    const syncTitle = (el) => {
+      if (!el) return;
+      const opt = el.options[el.selectedIndex];
+      if (opt) el.title = opt.title || opt.text;
+    };
+
+    if (this.dom.hudSelectScenA) {
+      this.dom.hudSelectScenA.innerHTML = buildOpts(currentA);
+      this.dom.hudSelectScenA.value = currentA;
+      syncTitle(this.dom.hudSelectScenA);
+    }
+    if (this.dom.hudSelectScenB) {
+      this.dom.hudSelectScenB.innerHTML = buildOpts(currentB);
+      this.dom.hudSelectScenB.value = currentB;
+      syncTitle(this.dom.hudSelectScenB);
+    }
+    if (this.dom.selectCompareBaseline) {
+      this.dom.selectCompareBaseline.innerHTML = buildOpts(currentA);
+      this.dom.selectCompareBaseline.value = currentA;
+      syncTitle(this.dom.selectCompareBaseline);
+    }
+    if (this.dom.selectCompareTarget) {
+      this.dom.selectCompareTarget.innerHTML = buildOpts(currentB);
+      this.dom.selectCompareTarget.value = currentB;
+      syncTitle(this.dom.selectCompareTarget);
+    }
+
+    this.validateScenarioComparisonSelection();
+    this.updateHudComparisonMetrics();
+  }
+
+  /**
+   * Update the 4 quick HUD comparison metrics from the selected Scenario A and Scenario B.
+   */
+  updateHudComparisonMetrics() {
+    const scenAId = this.dom.hudSelectScenA?.value;
+    const scenBId = this.dom.hudSelectScenB?.value;
+    if (!scenAId || !scenBId || scenAId === scenBId) return;
+
+    const scenA = this.scenarioManager.getScenario(scenAId);
+    const scenB = this.scenarioManager.getScenario(scenBId);
+    const compService = this.overlayManager?.scenarioComparisonService;
+    if (!scenA || !scenB || !compService) return;
+
+    try {
+      const detailed = compService.compareTwoScenariosDetailed(scenA, scenB);
+      if (!detailed || !detailed.diff) return;
+
+      if (this.dom.scenarioBaselineTag) {
+        this.dom.scenarioBaselineTag.textContent = `A: ${scenA.waterLevel.toFixed(1)}m | B: ${scenB.waterLevel.toFixed(1)}m`;
+      }
+
+      if (this.dom.diffNewBlds && detailed.diff.buildings) {
+        const b = detailed.diff.buildings;
+        this.dom.diffNewBlds.textContent = `+${b.newlyAffectedCount} (${b.newlyAffectedPercent}%)`;
+      }
+
+      if (this.dom.diffRouteLost && detailed.diff.buildings) {
+        const b = detailed.diff.buildings;
+        this.dom.diffRouteLost.textContent = `${b.routeLostCount} (${b.routeLostPercent}%)`;
+      }
+
+      if (this.dom.diffNewRoads && detailed.diff.roads) {
+        const r = detailed.diff.roads;
+        this.dom.diffNewRoads.textContent = `+${r.newlyImpassable} (${r.newlyImpassablePercent}%)`;
+      }
+
+      if (this.dom.diffIsolatedShelters && detailed.diff.shelters) {
+        const s = detailed.diff.shelters;
+        this.dom.diffIsolatedShelters.textContent = `${s.newlyIsolatedByRoads} isol / ${s.newlyInundated} flood`;
+      }
+    } catch (err) {
+      // Comparison service may still be initializing overlays
+    }
+  }
+
+  /**
+   * Validate that Scenario A and Scenario B are distinct and synchronize selector states.
+   * @param {'hud' | 'panel'} [source]
+   * @returns {boolean} True if selection is valid for comparison
+   */
+  validateScenarioComparisonSelection(source = 'hud') {
+    const scenAId = source === 'panel' ? this.dom.selectCompareBaseline?.value : this.dom.hudSelectScenA?.value;
+    const scenBId = source === 'panel' ? this.dom.selectCompareTarget?.value : this.dom.hudSelectScenB?.value;
+
+    // Synchronize HUD and panel dropdowns
+    if (source === 'panel') {
+      if (this.dom.hudSelectScenA && scenAId) this.dom.hudSelectScenA.value = scenAId;
+      if (this.dom.hudSelectScenB && scenBId) this.dom.hudSelectScenB.value = scenBId;
+    } else {
+      if (this.dom.selectCompareBaseline && scenAId) this.dom.selectCompareBaseline.value = scenAId;
+      if (this.dom.selectCompareTarget && scenBId) this.dom.selectCompareTarget.value = scenBId;
+    }
+
+    const syncTitle = (el) => {
+      if (!el) return;
+      const opt = el.options[el.selectedIndex];
+      if (opt) el.title = opt.title || opt.text;
+    };
+    syncTitle(this.dom.hudSelectScenA);
+    syncTitle(this.dom.hudSelectScenB);
+    syncTitle(this.dom.selectCompareBaseline);
+    syncTitle(this.dom.selectCompareTarget);
+
+    const isSelfComparison = Boolean(scenAId && scenBId && scenAId === scenBId);
+
+    if (this.dom.hudCompareValidation) {
+      this.dom.hudCompareValidation.classList.toggle('hidden', !isSelfComparison);
+    }
+    if (this.dom.panelCompareValidation) {
+      this.dom.panelCompareValidation.classList.toggle('hidden', !isSelfComparison);
+    }
+
+    if (this.dom.btnHudCompareScenarios) {
+      this.dom.btnHudCompareScenarios.disabled = isSelfComparison;
+      this.dom.btnHudCompareScenarios.classList.toggle('disabled', isSelfComparison);
+    }
+    if (this.dom.btnExecuteCompare) {
+      this.dom.btnExecuteCompare.disabled = isSelfComparison;
+      this.dom.btnExecuteCompare.classList.toggle('disabled', isSelfComparison);
+    }
+
+    const isValid = !isSelfComparison;
+    if (isValid) {
+      this.updateHudComparisonMetrics();
+    }
+
+    return isValid;
   }
 
   /**
@@ -1976,26 +2516,518 @@ export class UIController {
   }
 
   /**
-   * Compare two saved scenarios using the scenario-comparison service.
+   * Compare two selected scenarios using the data-driven scenario comparison service.
+   * Opens the detailed comparison modal without mutating the active simulation stage.
+   * @param {'hud' | 'panel'} [source]
    */
-  compareSelectedScenarios() {
-    if (!this.dom.selectCompareBaseline || !this.dom.selectCompareTarget) return;
-    const baseId = this.dom.selectCompareBaseline.value;
-    const targetId = this.dom.selectCompareTarget.value;
+  compareSelectedScenarios(source = 'hud') {
+    const scenAId = source === 'panel' ? this.dom.selectCompareBaseline?.value : this.dom.hudSelectScenA?.value;
+    const scenBId = source === 'panel' ? this.dom.selectCompareTarget?.value : this.dom.hudSelectScenB?.value;
 
-    const baseScen = this.scenarioManager.getScenario(baseId);
-    const targetScen = this.scenarioManager.getScenario(targetId);
-    if (!baseScen || !targetScen) return;
-
-    if (this.overlayManager && this.overlayManager.scenarioComparisonService) {
-      const compService = this.overlayManager.scenarioComparisonService;
-      compService.setBaselineScenario(baseScen.waterLevel);
-      if (this.dom.scenarioBaselineTag) {
-        this.dom.scenarioBaselineTag.textContent = `Baseline: ${baseScen.waterLevel.toFixed(1)}m`;
-      }
-      // Apply target water level
-      this.loadScenarioById(targetScen.id);
+    if (!scenAId || !scenBId) {
+      alert('Please select two scenarios to compare.');
+      return;
     }
+
+    if (scenAId === scenBId) {
+      if (this.dom.hudCompareValidation) this.dom.hudCompareValidation.classList.remove('hidden');
+      if (this.dom.panelCompareValidation) this.dom.panelCompareValidation.classList.remove('hidden');
+      alert('Validation Error: Scenario A and Scenario B cannot be the same scenario. Please choose two distinct scenarios.');
+      return;
+    }
+
+    const scenA = this.scenarioManager.getScenario(scenAId);
+    const scenB = this.scenarioManager.getScenario(scenBId);
+    if (!scenA || !scenB) {
+      alert('Selected scenario could not be found.');
+      return;
+    }
+
+    const compService = this.overlayManager?.scenarioComparisonService;
+    if (!compService) {
+      alert('Scenario comparison service is not available.');
+      return;
+    }
+
+    // Run detailed comparison without mutating active scenario or live 3D state
+    const report = compService.compareTwoScenariosDetailed(scenA, scenB);
+    this.currentComparisonReport = report;
+
+    this.openScenarioComparisonModal(report);
+  }
+
+  /**
+   * Open the Detailed Scenario Comparison Modal with calculated report.
+   * @param {Object} report
+   */
+  openScenarioComparisonModal(report) {
+    if (!this.dom.modalScenarioComparison || !report) return;
+
+    const sA = report.scenarioA || {};
+    const sB = report.scenarioB || {};
+
+    if (this.dom.modalBadgeScenA) {
+      const nameA = sA.name || 'Scenario A';
+      const dispA = nameA.includes('MSL') ? nameA : `${nameA} (${(sA.waterLevel || 124).toFixed(1)}m MSL)`;
+      this.dom.modalBadgeScenA.textContent = `Scenario A: ${dispA}`;
+    }
+    if (this.dom.modalBadgeScenB) {
+      const nameB = sB.name || 'Scenario B';
+      const dispB = nameB.includes('MSL') ? nameB : `${nameB} (${(sB.waterLevel || 124).toFixed(1)}m MSL)`;
+      this.dom.modalBadgeScenB.textContent = `Scenario B: ${dispB}`;
+    }
+    if (this.dom.modalBadgeDelta) {
+      const delta = report.waterLevelDelta ?? 0;
+      this.dom.modalBadgeDelta.textContent = `${delta >= 0 ? '+' : ''}${delta.toFixed(2)}m Stage`;
+    }
+
+    this.renderComparisonModal(report);
+    this.dom.modalScenarioComparison.classList.remove('hidden');
+  }
+
+  /**
+   * Close Detailed Scenario Comparison Modal.
+   */
+  closeScenarioComparisonModal() {
+    if (this.dom.modalScenarioComparison) {
+      this.dom.modalScenarioComparison.classList.add('hidden');
+    }
+  }
+
+  /**
+   * Render complete detailed comparison report inside modal dialog.
+   * @param {Object} report
+   */
+  renderComparisonModal(report) {
+    if (!this.dom.comparisonModalBody || !report) return;
+
+    const sA = report.scenarioA || {};
+    const sB = report.scenarioB || {};
+    const b = report.buildings || {};
+    const m = report.medical || {};
+    const sh = report.shelters || {};
+    const r = report.roads || {};
+
+    this._activeBuildingFilter = 'notable';
+    this._comparisonBuildingDeltas = b.deltas || [];
+
+    this.dom.comparisonModalBody.innerHTML = `
+      <!-- Executive Change Analysis Banner -->
+      <div class="change-analysis-banner font-mono">
+        <div class="change-analysis-title">
+          <span>⚡</span>
+          <span>EXECUTIVE CHANGE ANALYSIS (SCENARIO A ➔ SCENARIO B):</span>
+        </div>
+        <ul class="change-analysis-list">
+          ${(report.changeSummaries || []).map(s => `<li>${escapeHTML(s)}</li>`).join('')}
+        </ul>
+      </div>
+
+      <!-- High-Level Side-by-Side Impact Overview -->
+      <div class="comparison-section font-mono">
+        <div class="comparison-section-header">
+          <span class="comparison-section-title">OVERALL IMPACT SUMMARY</span>
+          <span class="text-cyan font-bold">${b.total} BUILDINGS EVALUATED</span>
+        </div>
+        
+        <div class="comparison-side-by-side">
+          <!-- Scenario A Column -->
+          <div class="scenario-column-card">
+            <div class="scenario-column-title">
+              <span>SCENARIO A: ${escapeHTML(sA.name)}</span>
+              <span class="text-cyan font-mono">${(sA.waterLevel || 124).toFixed(1)}m MSL</span>
+            </div>
+            <div class="comparison-kpi-grid">
+              <div class="comparison-kpi-card">
+                <div class="comparison-kpi-title">Safe Buildings</div>
+                <div class="comparison-kpi-val text-emerald">${b.safeA ?? 0}</div>
+                <div class="comparison-kpi-sub">${b.total > 0 ? ((b.safeA / b.total) * 100).toFixed(1) : 0}% of structures</div>
+              </div>
+              <div class="comparison-kpi-card">
+                <div class="comparison-kpi-title">Flood-Exposed Buildings</div>
+                <div class="comparison-kpi-val text-rose">${b.exposedA ?? 0}</div>
+                <div class="comparison-kpi-sub">${b.total > 0 ? ((b.exposedA / b.total) * 100).toFixed(1) : 0}% of structures</div>
+              </div>
+              <div class="comparison-kpi-card">
+                <div class="comparison-kpi-title">Operational Shelters</div>
+                <div class="comparison-kpi-val text-cyan">${sh.operationalA ?? 0} / ${sh.total ?? 0}</div>
+                <div class="comparison-kpi-sub">${sh.isolatedA ?? 0} road-isolated</div>
+              </div>
+              <div class="comparison-kpi-card">
+                <div class="comparison-kpi-title">Impassable Roads</div>
+                <div class="comparison-kpi-val text-rose">${r.impassableA ?? 0} / ${r.total ?? 0}</div>
+                <div class="comparison-kpi-sub">${r.passableA ?? 0} passable</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Scenario B Column -->
+          <div class="scenario-column-card">
+            <div class="scenario-column-title">
+              <span>SCENARIO B: ${escapeHTML(sB.name)}</span>
+              <span class="text-cyan font-mono">${(sB.waterLevel || 124).toFixed(1)}m MSL</span>
+            </div>
+            <div class="comparison-kpi-grid">
+              <div class="comparison-kpi-card">
+                <div class="comparison-kpi-title">Safe Buildings</div>
+                <div class="comparison-kpi-val text-emerald">${b.safeB ?? 0}</div>
+                <div class="comparison-kpi-sub">${(b.safeB || 0) - (b.safeA || 0) >= 0 ? '+' : ''}${(b.safeB || 0) - (b.safeA || 0)} net change</div>
+              </div>
+              <div class="comparison-kpi-card">
+                <div class="comparison-kpi-title">Flood-Exposed Buildings</div>
+                <div class="comparison-kpi-val text-rose">${b.exposedB ?? 0}</div>
+                <div class="comparison-kpi-sub">${(b.exposedB || 0) - (b.exposedA || 0) >= 0 ? '+' : ''}${(b.exposedB || 0) - (b.exposedA || 0)} net change</div>
+              </div>
+              <div class="comparison-kpi-card">
+                <div class="comparison-kpi-title">Operational Shelters</div>
+                <div class="comparison-kpi-val text-cyan">${sh.operationalB ?? 0} / ${sh.total ?? 0}</div>
+                <div class="comparison-kpi-sub">${sh.isolatedB ?? 0} road-isolated</div>
+              </div>
+              <div class="comparison-kpi-card">
+                <div class="comparison-kpi-title">Impassable Roads</div>
+                <div class="comparison-kpi-val text-rose">${r.impassableB ?? 0} / ${r.total ?? 0}</div>
+                <div class="comparison-kpi-sub">+${r.newlyImpassableCount ?? 0} new blocked</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cross-Scenario Delta Breakdown KPI Strip -->
+        <div class="comparison-kpi-grid" style="margin-top: 10px;">
+          <div class="comparison-kpi-card">
+            <div class="comparison-kpi-title">Newly Exposed (A ➔ B)</div>
+            <div class="comparison-kpi-val text-rose">+${b.newlyExposed ?? 0}</div>
+            <div class="comparison-kpi-sub">Transition from safe to flooded</div>
+          </div>
+          <div class="comparison-kpi-card">
+            <div class="comparison-kpi-title">Newly Safe (A ➔ B)</div>
+            <div class="comparison-kpi-val text-emerald">${b.newlySafe ?? 0}</div>
+            <div class="comparison-kpi-sub">Recover to safe dry conditions</div>
+          </div>
+          <div class="comparison-kpi-card">
+            <div class="comparison-kpi-title">Remained Exposed in Both</div>
+            <div class="comparison-kpi-val text-amber">${b.remainedExposed ?? 0}</div>
+            <div class="comparison-kpi-sub">Submerged across both stages</div>
+          </div>
+          <div class="comparison-kpi-card">
+            <div class="comparison-kpi-title">Unchanged Status</div>
+            <div class="comparison-kpi-val">${b.unchanged ?? 0}</div>
+            <div class="comparison-kpi-sub">Category unaffected by transition</div>
+          </div>
+          <div class="comparison-kpi-card">
+            <div class="comparison-kpi-title">Unknown / NoData DEM</div>
+            <div class="comparison-kpi-val text-muted">${b.unknown ?? 0}</div>
+            <div class="comparison-kpi-sub">Strictly excluded from safe counts</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hospital & Medical Facilities Section -->
+      <div class="comparison-section font-mono">
+        <div class="comparison-section-header">
+          <span class="comparison-section-title">HOSPITAL & MEDICAL FACILITIES SAFETY</span>
+          <span class="pill-unverified font-mono">SIMULATED FACILITY DATA</span>
+        </div>
+        <div class="change-analysis-banner" style="border-left-color: #a855f7; background: rgba(168, 85, 247, 0.08);">
+          ⚠️ <strong>DATASET PROVENANCE AUDIT:</strong> ${escapeHTML(m.provenanceNotice || '')}
+        </div>
+        <div class="comparison-table-wrap">
+          <table class="comparison-table font-mono">
+            <thead>
+              <tr>
+                <th>FACILITY ID</th>
+                <th>NAME</th>
+                <th>TYPE</th>
+                <th>PROVENANCE</th>
+                <th>GROUND ELEV</th>
+                <th>SCENARIO A DEPTH</th>
+                <th>SCENARIO A PHYSICAL</th>
+                <th>SCENARIO A ACCESS</th>
+                <th>SCENARIO B DEPTH</th>
+                <th>SCENARIO B PHYSICAL</th>
+                <th>SCENARIO B ACCESS</th>
+                <th>STATUS CHANGE</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(m.deltas || []).map(item => `
+                <tr>
+                  <td>${escapeHTML(item.id)}</td>
+                  <td><strong>${escapeHTML(item.name)}</strong></td>
+                  <td>${escapeHTML(item.type)}</td>
+                  <td><span class="pill-unverified">${escapeHTML(item.provenance || 'simulated')}</span></td>
+                  <td>${item.groundElevation !== null ? item.groundElevation.toFixed(2) + 'm' : 'Unknown'}</td>
+                  <td>${item.depthA !== null ? item.depthA.toFixed(2) + 'm' : 'Dry'}</td>
+                  <td><span class="pill-${item.physicalA}">${escapeHTML(item.physicalA)}</span></td>
+                  <td><span class="pill-${item.accessA === 'operational' ? 'safe' : item.accessA === 'isolated' ? 'isolated' : 'unknown'}">${escapeHTML(item.accessA)}</span></td>
+                  <td>${item.depthB !== null ? item.depthB.toFixed(2) + 'm' : 'Dry'}</td>
+                  <td><span class="pill-${item.physicalB}">${escapeHTML(item.physicalB)}</span></td>
+                  <td><span class="pill-${item.accessB === 'operational' ? 'safe' : item.accessB === 'isolated' ? 'isolated' : 'unknown'}">${escapeHTML(item.accessB)}</span></td>
+                  <td>${escapeHTML(item.changeDesc)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Emergency Shelters Safety & Availability Section -->
+      <div class="comparison-section font-mono">
+        <div class="comparison-section-header">
+          <span class="comparison-section-title">EMERGENCY SHELTER SAFETY & AVAILABILITY</span>
+          <span class="text-cyan">${sh.total} SHELTERS</span>
+        </div>
+        <div class="change-analysis-banner" style="border-left-color: #38bdf8; background: rgba(56, 189, 248, 0.08);">
+          ℹ️ <strong>PHYSICAL SITE SAFETY VS ROAD ACCESSIBILITY:</strong> A shelter is physically safe when its ground elevation exceeds the water stage. However, it is classified as <strong>isolated</strong> if its road evacuation corridor is severed by impassable flood waters (depth ≥ 0.15m). Baseline road network disconnections are preserved to prevent false flood failure attribution.
+        </div>
+        <div class="comparison-table-wrap">
+          <table class="comparison-table font-mono">
+            <thead>
+              <tr>
+                <th>SHELTER ID</th>
+                <th>NAME</th>
+                <th>CAPACITY</th>
+                <th>PROVENANCE</th>
+                <th>GROUND ELEV</th>
+                <th>SCENARIO A CLEARANCE</th>
+                <th>SCENARIO A PHYSICAL</th>
+                <th>SCENARIO A ROAD ACCESS</th>
+                <th>SCENARIO B CLEARANCE</th>
+                <th>SCENARIO B PHYSICAL</th>
+                <th>SCENARIO B ROAD ACCESS</th>
+                <th>TRANSITION DESCRIPTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(sh.deltas || []).map(item => `
+                <tr>
+                  <td>${escapeHTML(item.id)}</td>
+                  <td><strong>${escapeHTML(item.name)}</strong></td>
+                  <td>${escapeHTML(item.capacity || 'N/A')}</td>
+                  <td><span class="pill-unverified">${escapeHTML(item.provenance || 'simulated')}</span></td>
+                  <td>${item.groundElevation !== null ? item.groundElevation.toFixed(2) + 'm' : 'Unknown'}</td>
+                  <td>${item.clearanceA !== null ? (item.clearanceA >= 0 ? '+' : '') + item.clearanceA.toFixed(2) + 'm' : 'N/A'}</td>
+                  <td><span class="pill-${item.physicalA}">${escapeHTML(item.physicalA)}</span></td>
+                  <td><span class="pill-${item.accessA === 'operational' ? 'safe' : item.accessA === 'isolated' ? 'isolated' : 'unknown'}">${escapeHTML(item.accessA)}</span></td>
+                  <td>${item.clearanceB !== null ? (item.clearanceB >= 0 ? '+' : '') + item.clearanceB.toFixed(2) + 'm' : 'N/A'}</td>
+                  <td><span class="pill-${item.physicalB}">${escapeHTML(item.physicalB)}</span></td>
+                  <td><span class="pill-${item.accessB === 'operational' ? 'safe' : item.accessB === 'isolated' ? 'isolated' : 'unknown'}">${escapeHTML(item.accessB)}</span></td>
+                  <td>${escapeHTML(item.changeDesc)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Road Network Accessibility Section -->
+      <div class="comparison-section font-mono">
+        <div class="comparison-section-header">
+          <span class="comparison-section-title">ROAD NETWORK PASSABILITY SUMMARY</span>
+          <span class="text-cyan">${r.total} EDGES EVALUATED</span>
+        </div>
+        <div class="comparison-table-wrap">
+          <table class="comparison-table font-mono">
+            <thead>
+              <tr>
+                <th>CLASSIFICATION</th>
+                <th>SCENARIO A SEGMENTS</th>
+                <th>SCENARIO B SEGMENTS</th>
+                <th>NET CHANGE (A ➔ B)</th>
+                <th>DEPTH CRITERIA</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Passable (Unaffected)</strong></td>
+                <td>${r.passableA ?? 0}</td>
+                <td>${r.passableB ?? 0}</td>
+                <td>${(r.passableB || 0) - (r.passableA || 0) >= 0 ? '+' : ''}${(r.passableB || 0) - (r.passableA || 0)}</td>
+                <td>Water depth &lt; 0.05m</td>
+              </tr>
+              <tr>
+                <td><strong>Caution (Exposed)</strong></td>
+                <td>${r.cautionA ?? 0}</td>
+                <td>${r.cautionB ?? 0}</td>
+                <td>${(r.cautionB || 0) - (r.cautionA || 0) >= 0 ? '+' : ''}${(r.cautionB || 0) - (r.cautionA || 0)}</td>
+                <td>Water depth 0.05m - 0.15m</td>
+              </tr>
+              <tr>
+                <td><strong class="text-rose">Impassable (Blocked)</strong></td>
+                <td>${r.impassableA ?? 0}</td>
+                <td>${r.impassableB ?? 0}</td>
+                <td>${(r.impassableB || 0) - (r.impassableA || 0) >= 0 ? '+' : ''}${(r.impassableB || 0) - (r.impassableA || 0)} (+${r.newlyImpassableCount ?? 0} new blocked)</td>
+                <td>Water depth &ge; 0.15m conservative vehicle limit</td>
+              </tr>
+              <tr>
+                <td><strong>Unknown DEM Data</strong></td>
+                <td>${r.unknownA ?? 0}</td>
+                <td>${r.unknownB ?? 0}</td>
+                <td>0</td>
+                <td>Missing LiDAR (treated as impassable for safety)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Detailed Building Impact Comparison Table -->
+      <div class="comparison-section font-mono">
+        <div class="comparison-section-header">
+          <span class="comparison-section-title">DETAILED BUILDING IMPACT TRANSITIONS</span>
+          <span class="text-cyan font-bold" id="comparison-buildings-count">${b.deltas?.length || 0} Structures</span>
+        </div>
+        
+        <div class="building-filter-bar font-mono" id="comparison-building-filter-bar">
+          <button class="building-filter-btn active" data-filter="notable">All Notable Transitions</button>
+          <button class="building-filter-btn" data-filter="newly_exposed">Newly Exposed (+${b.newlyExposed ?? 0})</button>
+          <button class="building-filter-btn" data-filter="newly_safe">Newly Safe (-${b.newlySafe ?? 0})</button>
+          <button class="building-filter-btn" data-filter="remained_exposed">Remained Exposed (${b.remainedExposed ?? 0})</button>
+          <button class="building-filter-btn" data-filter="unknown">Unknown DEM (${b.unknown ?? 0})</button>
+          <button class="building-filter-btn" data-filter="all">All Evaluated (${b.total ?? 0})</button>
+        </div>
+
+        <div class="comparison-table-wrap">
+          <table class="comparison-table font-mono" id="comparison-buildings-table">
+            <thead>
+              <tr>
+                <th>BUILDING ID</th>
+                <th>BASE ELEV</th>
+                <th>SCENARIO A STATUS</th>
+                <th>SCENARIO A DEPTH</th>
+                <th>SCENARIO A ACCESS</th>
+                <th>SCENARIO B STATUS</th>
+                <th>SCENARIO B DEPTH</th>
+                <th>SCENARIO B ACCESS</th>
+                <th>TRANSITION DELTA</th>
+                <th>DEPTH CHANGE</th>
+              </tr>
+            </thead>
+            <tbody id="comparison-buildings-tbody">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Data Quality, Uncertainty & Methodological Limitations -->
+      <div class="comparison-section font-mono">
+        <div class="comparison-section-header">
+          <span class="comparison-section-title">DATA QUALITY, UNCERTAINTY & METHODOLOGICAL LIMITATIONS</span>
+          <span class="pill-unknown">AUDITED CAVEATS</span>
+        </div>
+        <div class="change-analysis-banner" style="border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.08); font-size: 9.5px; line-height: 1.5;">
+          <strong>1. CONCEPTUAL ELEVATION MODEL:</strong> HighWater 3D uses a static bare-earth LiDAR DGM1 ground intersection model. It does not model momentum, hydrodynamic wave dissipation, friction, or floodwall breaching.<br>
+          <strong>2. DAMAGE VS IMMERSION:</strong> Ground-contact water depth does not establish interior ingress or structural failure.<br>
+          <strong>3. DEFINITION OF SAFE:</strong> A building or facility is classified as "Safe" only when confirmed zero positive ground-contact water depth with valid elevation data. Unknown DEM records are never converted to safe.<br>
+          <strong>4. EMERGENCY HEALTHCARE:</strong> No verified municipal emergency hospital exists in the open Dernau research dataset; the simulated marker is provided strictly for demonstration and does not prove absence in the real world.<br>
+          <strong>5. ROAD NETWORK TOPOLOGY:</strong> 67 disconnected road components present in the baseline OpenStreetMap source data are preserved to avoid falsely attributing pre-existing isolation to floodwaters.
+        </div>
+      </div>
+    `;
+
+    // Render initial building rows
+    this.renderComparisonBuildingTable('notable');
+
+    // Attach building filter listener
+    const filterBar = this.dom.comparisonModalBody.querySelector('#comparison-building-filter-bar');
+    if (filterBar) {
+      filterBar.querySelectorAll('.building-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          filterBar.querySelectorAll('.building-filter-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const filter = btn.getAttribute('data-filter');
+          this.renderComparisonBuildingTable(filter);
+        });
+      });
+    }
+  }
+
+  /**
+   * Filter and render building rows in the comparison table.
+   * @param {string} filter
+   */
+  renderComparisonBuildingTable(filter = 'notable') {
+    const tbody = document.getElementById('comparison-buildings-tbody');
+    const countSpan = document.getElementById('comparison-buildings-count');
+    if (!tbody || !this._comparisonBuildingDeltas) return;
+
+    let filtered = this._comparisonBuildingDeltas;
+    if (filter === 'newly_exposed') {
+      filtered = this._comparisonBuildingDeltas.filter(b => b.deltaType === 'newly_exposed');
+    } else if (filter === 'newly_safe') {
+      filtered = this._comparisonBuildingDeltas.filter(b => b.deltaType === 'newly_safe');
+    } else if (filter === 'remained_exposed') {
+      filtered = this._comparisonBuildingDeltas.filter(b => b.deltaType === 'remained_exposed');
+    } else if (filter === 'unknown') {
+      filtered = this._comparisonBuildingDeltas.filter(b => b.deltaType === 'unknown');
+    } else if (filter === 'notable') {
+      // Exclude remained_safe (which is 600+ quiet dry buildings) to highlight transitions
+      filtered = this._comparisonBuildingDeltas.filter(b => b.deltaType !== 'remained_safe');
+    }
+
+    if (countSpan) {
+      countSpan.textContent = `${filtered.length} Structures (${filter.replace('_', ' ')})`;
+    }
+
+    // Limit to 200 items for snappy rendering in DOM
+    const displayList = filtered.slice(0, 200);
+
+    tbody.innerHTML = displayList.map(item => {
+      const elevStr = item.baseElevationM !== null && item.baseElevationM !== undefined ? `${item.baseElevationM.toFixed(1)}m` : 'NoData';
+      const depthAStr = item.depthA ? `${item.depthA.toFixed(2)}m` : '0.00m';
+      const depthBStr = item.depthB ? `${item.depthB.toFixed(2)}m` : '0.00m';
+      const deltaDepthStr = `${item.deltaDepthM >= 0 ? '+' : ''}${item.deltaDepthM.toFixed(2)}m`;
+      const pillClass = item.deltaType === 'newly_exposed' ? 'pill-exposed' : item.deltaType === 'newly_safe' ? 'pill-safe' : item.deltaType === 'remained_exposed' ? 'pill-isolated' : 'pill-unknown';
+
+      return `
+        <tr>
+          <td><strong>${escapeHTML(item.id)}</strong></td>
+          <td>${elevStr}</td>
+          <td><span class="pill-${item.isSafeA ? 'safe' : 'exposed'}">${escapeHTML(item.statusA)}</span></td>
+          <td>${depthAStr}</td>
+          <td>${escapeHTML(item.accessA)}</td>
+          <td><span class="pill-${item.isSafeB ? 'safe' : 'exposed'}">${escapeHTML(item.statusB)}</span></td>
+          <td>${depthBStr}</td>
+          <td>${escapeHTML(item.accessB)}</td>
+          <td><span class="${pillClass}">${escapeHTML(item.deltaType.toUpperCase().replace('_', ' '))}</span></td>
+          <td class="${item.deltaDepthM > 0 ? 'text-rose' : item.deltaDepthM < 0 ? 'text-emerald' : ''}">${deltaDepthStr}</td>
+        </tr>
+      `;
+    }).join('');
+
+    if (filtered.length > 200) {
+      tbody.innerHTML += `
+        <tr>
+          <td colspan="10" style="text-align: center; color: var(--text-muted); font-size: 9px; padding: 10px;">
+            Showing first 200 of ${filtered.length} structures. Export full CSV report to inspect all records.
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  /**
+   * Download Detailed Two-Scenario Comparison as RFC 4180 CSV.
+   * @param {Object} [report]
+   */
+  downloadDetailedComparisonCSV(report = this.currentComparisonReport) {
+    if (!report) return;
+    const csv = this.scenarioManager.generateComparisonCSVReport(report);
+    const scenAName = (report.scenarioA?.name || 'scen_a').toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const scenBName = (report.scenarioB?.name || 'scen_b').toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const filename = `highwater3d_comparison_${scenAName}_vs_${scenBName}.csv`;
+    this.scenarioManager.downloadCSV(csv, filename);
+  }
+
+  /**
+   * Open Detailed Two-Scenario Comparison as print-friendly HTML document.
+   * @param {Object} [report]
+   */
+  exportDetailedComparisonHTML(report = this.currentComparisonReport) {
+    if (!report) return;
+    const html = this.scenarioManager.generateComparisonHTMLReport(report);
+    this.scenarioManager.openPrintReport(html);
   }
 
   /**

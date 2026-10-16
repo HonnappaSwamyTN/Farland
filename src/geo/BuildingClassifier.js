@@ -102,10 +102,14 @@ export class BuildingClassifier {
     }
 
     const { x, z } = buildingFeature.center;
-    const gElev = (typeof buildingFeature.baseElevationM === 'number' ? buildingFeature.baseElevationM : null)
-      ?? (this.terrainManager && typeof this.terrainManager.getElevationAt === 'function'
-        ? this.terrainManager.getElevationAt(x, z)
-        : null);
+    let gElev = null;
+    if ('baseElevationM' in buildingFeature) {
+      gElev = typeof buildingFeature.baseElevationM === 'number' && !Number.isNaN(buildingFeature.baseElevationM)
+        ? buildingFeature.baseElevationM
+        : null;
+    } else if (this.terrainManager && typeof this.terrainManager.getElevationAt === 'function') {
+      gElev = this.terrainManager.getElevationAt(x, z);
+    }
 
     // Check for missing or NoData DEM elevations
     if (gElev === null || Number.isNaN(gElev) || gElev <= 0 || gElev === -9999) {

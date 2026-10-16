@@ -760,5 +760,592 @@ export class ScenarioComparisonService {
     if (!this.currentComparison || !this.currentComparison.shelterAssessments) return null;
     return this.currentComparison.shelterAssessments.find(s => s.id === id) || null;
   }
+
+  /**
+   * Evaluate a single scenario purely without mutating the active simulation state.
+   * @private
+   * @param {Object|number} scenario - Scenario object or water level number
+   * @returns {Object} Immutable evaluation snapshot
+   */
+  _evaluateSingleScenarioSnapshot(scenario) {
+    const scenObj = typeof scenario === 'object' && scenario !== null ? scenario : { waterLevel: scenario };
+    const waterLevel = typeof scenObj.waterLevel === 'number' && !Number.isNaN(scenObj.waterLevel)
+      ? Math.round(scenObj.waterLevel * 100) / 100
+      : 124.0;
+    const name = scenObj.name || `Scenario ${waterLevel.toFixed(1)}m MSL`;
+    const id = scenObj.id || `scen-${waterLevel.toFixed(1)}`;
+
+    const queryWater = (x, z) => waterLevel;
+
+    // 1. Pure road evaluation without mutating network edge objects
+    const roadStates = new Map();
+    let roadPassable = 0;
+    let roadCaution = 0;
+    let roadImpassable = 0;
+    let roadUnknown = 0;
+
+    const exposedDepthThreshold = this.roadNetwork?.config?.exposedDepthThreshold ?? 0.05;
+    const impassableDepthThreshold = this.roadNetwork?.config?.impassableDepthThreshold ?? 0.15;
+
+    if (this.roadNetwork && this.roadNetwork.edges) {
+      for (const [eId, edge] of this.roadNetwork.edges.entries()) {
+        let maxDepth = 0;
+        let validSamples = 0;
+        let unknownSamples = 0;
+
+        for (const sample of edge.samples || []) {
+          if (sample.isNoData || sample.groundElevation === null || typeof sample.groundElevation !== 'number' || Number.isNaN(sample.groundElevation)) {
+            unknownSamples++;
+            continue;
+          }
+          const wElev = queryWater(sample.x, sample.z);
+          if (wElev === null || typeof wElev !== 'number' || Number.isNaN(wElev)) {
+            unknownSamples++;
+            continue;
+          }
+          const depth = Math.max(0, wElev - sample.groundElevation);
+          if (depth > maxDepth) maxDepth = depth;
+          validSamples++;
+        }
+
+        let status = ROAD_STATUS.UNAFFECTED;
+        if (validSamples === 0 || unknownSamples > validSamples) {
+          status = ROAD_STATUS.UNKNOWN;
+          roadUnknown++;
+        } else if (maxDepth >= impassableDepthThreshold) {
+          status = ROAD_STATUS.IMPASSABLE;
+          roadImpassable++;
+        } else if (maxDepth >= exposedDepthThreshold) {
+          status = ROAD_STATUS.EXPOSED;
+          roadCaution++;
+        } else {
+          status = ROAD_STATUS.UNAFFECTED;
+          roadPassable++;
+        }
+
+        roadStates.set(eId, {
+          id: eId,
+          featureId: edge.featureId,
+          status,
+          maxWaterDepth: maxDepth,
+          lengthMeters: edge.lengthMeters,
+        });
+      }
+    }
+
+    // 2. Pure facility evaluation (medical & shelters)
+    const facilityEvaluations = [];
+    const shelterEvaluations = [];
+    const medicalEvaluations = [];
+    const activeOperationalShelters = [];
+
+    for (const fac of this.facilityFeatures || []) {
+      const isShelter = fac.type === 'shelter';
+      const isMedical = fac.type === 'hospital' || fac.type === 'medical';
+
+      const gElev = this.terrainManager?.getElevationAt(fac.center.x, fac.center.z) ?? fac.elevationM;
+      const wElev = queryWater(fac.center.x, fac.center.z);
+      const isInvalidGElev = gElev === null || Number.isNaN(gElev) || gElev <= 0 || gElev === -9999;
+      const isInvalidWElev = wElev === null || Number.isNaN(wElev);
+
+      const staticAcc = this.staticFacilityAccess?.get(fac.id);
+      let isSiteInundated = false;
+      let depth = null;
+      let clearance = null;
+      let accessStatus = 'operational';
+      let physicalStatus = 'safe';
+
+      if (isInvalidGElev || isInvalidWElev) {
+        physicalStatus = 'unknown';
+        accessStatus = 'unknown';
+      } else {
+        depth = Math.max(0, wElev - gElev);
+        clearance = gElev - wElev;
+        isSiteInundated = depth > 0.05;
+        physicalStatus = isSiteInundated ? 'exposed' : 'safe';
+
+        if (isSiteInundated) {
+          accessStatus = 'inundated';
+        } else if (!staticAcc || !staticAcc.roadNodeId) {
+          accessStatus = 'disconnected';
+        } else {
+          const node = this.roadNetwork?.nodes?.get(staticAcc.roadNodeId);
+          if (!node || !node.edgeIds || node.edgeIds.size === 0) {
+            accessStatus = 'disconnected';
+          } else {
+            let allEdgesImpassable = true;
+            let anyEdgeExposed = false;
+
+            for (const edgeId of node.edgeIds) {
+              const edgeState = roadStates.get(edgeId);
+              if (edgeState) {
+                if (edgeState.status !== ROAD_STATUS.IMPASSABLE && edgeState.status !== ROAD_STATUS.UNKNOWN) {
+                  allEdgesImpassable = false;
+                }
+                if (edgeState.status === ROAD_STATUS.EXPOSED) {
+                  anyEdgeExposed = true;
+                }
+              }
+            }
+
+            if (allEdgesImpassable) {
+              const baseStatus = this.baselineShelterStates?.get(fac.id);
+              if (baseStatus === 'disconnected' || baseStatus === 'baseline_isolated') {
+                accessStatus = 'disconnected';
+              } else {
+                accessStatus = 'isolated';
+              }
+            } else if (anyEdgeExposed) {
+              accessStatus = 'exposed';
+            } else {
+              accessStatus = 'operational';
+            }
+          }
+        }
+      }
+
+      const facEval = {
+        id: fac.id,
+        name: fac.name || `Facility ${fac.id}`,
+        type: fac.type || 'shelter',
+        capacity: fac.capacity || (isShelter ? 'Not specified' : 'N/A'),
+        provenance: fac.provenance || 'simulated',
+        isVerified: Boolean(fac.isVerified),
+        groundElevation: gElev !== null && !isInvalidGElev ? Math.round(gElev * 10) / 10 : null,
+        waterElevation: Math.round(wElev * 10) / 10,
+        depth: depth !== null ? Math.round(depth * 100) / 100 : null,
+        clearance: clearance !== null ? Math.round(clearance * 100) / 100 : null,
+        isSiteInundated,
+        physicalStatus,
+        accessStatus,
+        roadNodeId: staticAcc?.roadNodeId || null,
+        statusLabel: isSiteInundated
+          ? 'Site Inundated'
+          : accessStatus === 'isolated'
+          ? 'Isolated by Flooded Roads'
+          : accessStatus === 'exposed'
+          ? 'Access Exposed to Shallow Water'
+          : accessStatus === 'disconnected'
+          ? 'Disconnected in Source Data'
+          : accessStatus === 'unknown'
+          ? 'Unknown Data'
+          : 'Operational / Reachable',
+      };
+
+      facilityEvaluations.push(facEval);
+      if (isShelter) {
+        shelterEvaluations.push(facEval);
+        if (!isSiteInundated && accessStatus !== 'disconnected' && staticAcc?.roadNodeId) {
+          activeOperationalShelters.push(fac);
+        }
+      }
+      if (isMedical) {
+        medicalEvaluations.push(facEval);
+      }
+    }
+
+    // 3. Multi-source BFS for road reachability
+    const reachableNodes = new Map();
+    if (this.roadNetwork?.nodes) {
+      const queue = [];
+      for (const sh of activeOperationalShelters) {
+        const facAcc = this.staticFacilityAccess?.get(sh.id);
+        if (!facAcc || !facAcc.roadNodeId) continue;
+        const startNodeId = facAcc.roadNodeId;
+        if (!reachableNodes.has(startNodeId)) {
+          reachableNodes.set(startNodeId, { canReach: true, isDry: true, nearestShelter: sh });
+          queue.push({ nodeId: startNodeId, isDry: true, nearestShelter: sh });
+        }
+      }
+
+      while (queue.length > 0) {
+        const { nodeId, isDry, nearestShelter } = queue.shift();
+        const node = this.roadNetwork.nodes.get(nodeId);
+        if (!node) continue;
+
+        for (const edgeId of node.edgeIds || []) {
+          const edge = this.roadNetwork.edges.get(edgeId);
+          const edgeState = roadStates.get(edgeId);
+          if (!edge || !edgeState) continue;
+
+          if (edgeState.status === ROAD_STATUS.IMPASSABLE || edgeState.status === ROAD_STATUS.UNKNOWN) {
+            continue;
+          }
+
+          const neighborId = edge.fromNodeId === nodeId ? edge.toNodeId : edge.fromNodeId;
+          const nextIsDry = isDry && (edgeState.status === ROAD_STATUS.UNAFFECTED);
+
+          const existing = reachableNodes.get(neighborId);
+          if (!existing) {
+            reachableNodes.set(neighborId, { canReach: true, isDry: nextIsDry, nearestShelter });
+            queue.push({ nodeId: neighborId, isDry: nextIsDry, nearestShelter });
+          } else if (!existing.isDry && nextIsDry) {
+            existing.isDry = true;
+            queue.push({ nodeId: neighborId, isDry: true, nearestShelter });
+          }
+        }
+      }
+    }
+
+    // 4. Buildings evaluation
+    const buildingEvaluations = [];
+    let bldSafe = 0;
+    let bldExposed = 0;
+    let bldUnknown = 0;
+    let bldRouteLost = 0;
+    let bldConnected = 0;
+    let bldDisconnectedInSource = 0;
+
+    for (const bld of this.buildingFeatures || []) {
+      const cls = this.buildingClassifier
+        ? this.buildingClassifier.classifyBuilding(bld, queryWater)
+        : { category: 'unknown', isExposed: false, waterDepth: 0 };
+      const bldStatic = this.staticBuildingAccess?.get(bld.id);
+      const baseline = this.baselineBuildingEvaluations?.get(bld.id);
+
+      const isExplicitNoData = bld.baseElevationM === null || (typeof bld.baseElevationM === 'number' && Number.isNaN(bld.baseElevationM));
+      const isUnknown = isExplicitNoData || cls.category === BUILDING_EXPOSURE.UNKNOWN || cls.category === 'unknown';
+      const isSafe = !isUnknown && cls.category === BUILDING_EXPOSURE.UNAFFECTED;
+      const isExposed = !isUnknown && cls.category !== BUILDING_EXPOSURE.UNAFFECTED;
+
+      if (isSafe) bldSafe++;
+      else if (isExposed) bldExposed++;
+      else bldUnknown++;
+
+      let accStatus = ACCESS_STATUS.CONNECTED;
+      if (isUnknown) {
+        accStatus = ACCESS_STATUS.UNKNOWN;
+      } else if (!bldStatic || !bldStatic.hasRoadAccess) {
+        accStatus = ACCESS_STATUS.DISCONNECTED_IN_SOURCE;
+        bldDisconnectedInSource++;
+      } else {
+        const hadBaseline = baseline ? baseline.hasRoute : false;
+        const reach = reachableNodes.get(bldStatic.roadNodeId);
+        if (!hadBaseline) {
+          accStatus = ACCESS_STATUS.DISCONNECTED_IN_SOURCE;
+          bldDisconnectedInSource++;
+        } else if (reach && reach.canReach) {
+          accStatus = reach.isDry ? ACCESS_STATUS.CONNECTED : ACCESS_STATUS.ACCESS_DEGRADED;
+          bldConnected++;
+        } else {
+          accStatus = ACCESS_STATUS.ROUTE_LOST;
+          bldRouteLost++;
+        }
+      }
+
+      buildingEvaluations.push({
+        id: bld.id,
+        areaSqM: bld.areaSqM,
+        baseElevationM: bld.baseElevationM,
+        center: bld.center,
+        category: cls.category,
+        waterDepth: cls.waterDepth,
+        isSafe,
+        isExposed,
+        isUnknown,
+        accessStatus: accStatus,
+      });
+    }
+
+    return {
+      scenario: {
+        id,
+        name,
+        waterLevel,
+        profileMode: scenObj.profileMode || 'planar',
+        connectedOnly: scenObj.connectedOnly !== false,
+      },
+      buildings: {
+        total: buildingEvaluations.length,
+        safe: bldSafe,
+        exposed: bldExposed,
+        unknown: bldUnknown,
+        routeLost: bldRouteLost,
+        connected: bldConnected,
+        disconnectedInSource: bldDisconnectedInSource,
+        list: buildingEvaluations,
+      },
+      facilities: {
+        total: facilityEvaluations.length,
+        medical: medicalEvaluations,
+        shelters: shelterEvaluations,
+        all: facilityEvaluations,
+      },
+      roads: {
+        total: roadStates.size,
+        passable: roadPassable,
+        caution: roadCaution,
+        impassable: roadImpassable,
+        unknown: roadUnknown,
+        states: roadStates,
+      },
+    };
+  }
+
+  /**
+   * Complete, independent two-scenario comparison between Scenario A and Scenario B.
+   * Completely non-mutating of active map, slider, or scenario state.
+   * 
+   * @param {Object|number} scenarioA - First scenario (or water level)
+   * @param {Object|number} scenarioB - Second scenario (or water level)
+   * @returns {Object} Comprehensive side-by-side comparison report
+   */
+  compareTwoScenariosDetailed(scenarioA, scenarioB) {
+    if (scenarioA === null || scenarioA === undefined || scenarioB === null || scenarioB === undefined) {
+      throw new Error('Both Scenario A and Scenario B are required for comparison.');
+    }
+    const idA = typeof scenarioA === 'object' ? scenarioA.id : null;
+    const idB = typeof scenarioB === 'object' ? scenarioB.id : null;
+    if (idA && idB && idA === idB) {
+      throw new Error('Cannot compare a scenario with itself. Please select two different scenarios.');
+    }
+
+    const evalA = this._evaluateSingleScenarioSnapshot(scenarioA);
+    const evalB = this._evaluateSingleScenarioSnapshot(scenarioB);
+
+    // 1. Building Cross-Scenario Analysis
+    let newlyExposedBuildings = 0;
+    let newlySafeBuildings = 0;
+    let remainedExposedBuildings = 0;
+    let remainedSafeBuildings = 0;
+    let unchangedBuildings = 0;
+    let unknownBuildings = 0;
+
+    const buildingDeltas = [];
+    const mapA = new Map(evalA.buildings.list.map(b => [b.id, b]));
+
+    for (const bB of evalB.buildings.list) {
+      const bA = mapA.get(bB.id);
+      let deltaType = 'unchanged';
+
+      if (!bA || bA.isUnknown || bB.isUnknown) {
+        unknownBuildings++;
+        deltaType = 'unknown';
+      } else if (bA.isSafe && bB.isExposed) {
+        newlyExposedBuildings++;
+        deltaType = 'newly_exposed';
+      } else if (bA.isExposed && bB.isSafe) {
+        newlySafeBuildings++;
+        deltaType = 'newly_safe';
+      } else if (bA.isExposed && bB.isExposed) {
+        remainedExposedBuildings++;
+        deltaType = 'remained_exposed';
+      } else if (bA.isSafe && bB.isSafe) {
+        remainedSafeBuildings++;
+        deltaType = 'remained_safe';
+      }
+
+      if (bA && bB && bA.category === bB.category && !bA.isUnknown && !bB.isUnknown) {
+        unchangedBuildings++;
+      }
+
+      buildingDeltas.push({
+        id: bB.id,
+        areaSqM: bB.areaSqM,
+        baseElevationM: bB.baseElevationM,
+        statusA: bA ? bA.category : 'unknown',
+        depthA: bA ? bA.waterDepth : 0,
+        isSafeA: bA ? bA.isSafe : false,
+        accessA: bA ? bA.accessStatus : 'unknown',
+        statusB: bB.category,
+        depthB: bB.waterDepth,
+        isSafeB: bB.isSafe,
+        accessB: bB.accessStatus,
+        deltaType,
+        deltaDepthM: Math.round(((bB.waterDepth || 0) - (bA?.waterDepth || 0)) * 100) / 100,
+      });
+    }
+
+    // 2. Medical Facilities Cross-Scenario Analysis
+    const medicalDeltas = [];
+    const medMapA = new Map(evalA.facilities.medical.map(m => [m.id, m]));
+    for (const mB of evalB.facilities.medical) {
+      const mA = medMapA.get(mB.id);
+      let changeDesc = 'Status unchanged';
+      if (mA) {
+        if (mA.physicalStatus === 'safe' && mB.physicalStatus === 'exposed') {
+          changeDesc = `Became Exposed (${mB.depth.toFixed(2)}m depth)`;
+        } else if (mA.physicalStatus === 'exposed' && mB.physicalStatus === 'safe') {
+          changeDesc = `Became Safe (+${mB.clearance.toFixed(2)}m clearance)`;
+        } else if (mA.physicalStatus === 'safe' && mB.physicalStatus === 'safe') {
+          changeDesc = `Remains Safe (Clearance: ${mA.clearance.toFixed(1)}m ➔ ${mB.clearance.toFixed(1)}m)`;
+        } else {
+          changeDesc = `Remains Exposed (Depth: ${mA.depth.toFixed(2)}m ➔ ${mB.depth.toFixed(2)}m)`;
+        }
+      }
+      medicalDeltas.push({
+        id: mB.id,
+        name: mB.name,
+        type: mB.type,
+        provenance: mB.provenance,
+        isVerified: mB.isVerified,
+        groundElevation: mB.groundElevation,
+        depthA: mA?.depth ?? null,
+        clearanceA: mA?.clearance ?? null,
+        physicalA: mA?.physicalStatus ?? 'unknown',
+        accessA: mA?.accessStatus ?? 'unknown',
+        depthB: mB.depth,
+        clearanceB: mB.clearance,
+        physicalB: mB.physicalStatus,
+        accessB: mB.accessStatus,
+        changeDesc,
+      });
+    }
+
+    // 3. Shelters Cross-Scenario Analysis
+    const shelterDeltas = [];
+    const shMapA = new Map(evalA.facilities.shelters.map(s => [s.id, s]));
+    for (const sB of evalB.facilities.shelters) {
+      const sA = shMapA.get(sB.id);
+      let changeDesc = 'Status unchanged';
+      if (sA) {
+        if (sA.physicalStatus === 'safe' && sB.physicalStatus === 'exposed') {
+          changeDesc = `Site submerged (${sB.depth.toFixed(2)}m water depth)`;
+        } else if (sA.physicalStatus === 'exposed' && sB.physicalStatus === 'safe') {
+          changeDesc = `Site recovered to dry (+${sB.clearance.toFixed(2)}m clearance)`;
+        } else if (sA.accessStatus === 'operational' && sB.accessStatus === 'isolated') {
+          changeDesc = 'Road access severed by flood water (isolated; site dry)';
+        } else if (sA.accessStatus === 'isolated' && sB.accessStatus === 'operational') {
+          changeDesc = 'Road access restored (now operational)';
+        } else if (sA.accessStatus === 'disconnected' && sB.accessStatus === 'disconnected') {
+          changeDesc = 'Pre-existing disconnection in baseline road graph';
+        } else {
+          changeDesc = `${sA.statusLabel} ➔ ${sB.statusLabel}`;
+        }
+      }
+      shelterDeltas.push({
+        id: sB.id,
+        name: sB.name,
+        capacity: sB.capacity,
+        provenance: sB.provenance,
+        groundElevation: sB.groundElevation,
+        depthA: sA?.depth ?? null,
+        clearanceA: sA?.clearance ?? null,
+        physicalA: sA?.physicalStatus ?? 'unknown',
+        accessA: sA?.accessStatus ?? 'unknown',
+        depthB: sB.depth,
+        clearanceB: sB.clearance,
+        physicalB: sB.physicalStatus,
+        accessB: sB.accessStatus,
+        changeDesc,
+      });
+    }
+
+    // 4. Roads Cross-Scenario Analysis
+    const newlyImpassableRoads = [];
+    const newlyPassableRoads = [];
+    if (this.roadNetwork?.edges) {
+      for (const [eId, edgeB] of evalB.roads.states.entries()) {
+        const edgeA = evalA.roads.states.get(eId);
+        if (edgeA) {
+          if (edgeA.status !== ROAD_STATUS.IMPASSABLE && edgeB.status === ROAD_STATUS.IMPASSABLE) {
+            newlyImpassableRoads.push(eId);
+          } else if (edgeA.status === ROAD_STATUS.IMPASSABLE && edgeB.status !== ROAD_STATUS.IMPASSABLE) {
+            newlyPassableRoads.push(eId);
+          }
+        }
+      }
+    }
+
+    // 5. Natural Language Change Summaries
+    const changeSummaries = [];
+    if (newlyExposedBuildings > 0) {
+      const pct = evalA.buildings.total > 0 ? (newlyExposedBuildings / evalA.buildings.total * 100).toFixed(1) : 0;
+      changeSummaries.push(`${newlyExposedBuildings} additional buildings become flood-exposed in Scenario B (+${pct}% of evaluated structures).`);
+    } else if (newlySafeBuildings > 0) {
+      const pct = evalA.buildings.total > 0 ? (newlySafeBuildings / evalA.buildings.total * 100).toFixed(1) : 0;
+      changeSummaries.push(`${newlySafeBuildings} buildings recover to safe, dry conditions in Scenario B (-${pct}% of structures).`);
+    } else {
+      changeSummaries.push(`Building flood exposure remains identical between Scenario A and Scenario B (${evalA.buildings.safe} safe, ${evalA.buildings.exposed} exposed).`);
+    }
+
+    const shelterStatusChanges = shelterDeltas.filter(s => s.physicalA !== s.physicalB || s.accessA !== s.accessB);
+    if (shelterStatusChanges.length > 0) {
+      changeSummaries.push(`${shelterStatusChanges.length} emergency shelter(s) change operational safety or accessibility status between scenarios.`);
+    } else {
+      changeSummaries.push(`All ${evalA.facilities.shelters.length} emergency shelters maintain identical operational availability across both scenarios.`);
+    }
+
+    const medChanges = medicalDeltas.filter(m => m.physicalA !== m.physicalB || m.accessA !== m.accessB);
+    if (medChanges.length > 0) {
+      changeSummaries.push(`Medical facility status changes: ${medChanges.map(m => m.changeDesc).join('; ')}.`);
+    } else {
+      changeSummaries.push(`Simulated demonstration medical facility maintains identical physical status across both scenarios (0 certified municipal hospitals in research dataset).`);
+    }
+
+    if (newlyImpassableRoads.length > 0) {
+      changeSummaries.push(`${newlyImpassableRoads.length} additional road segment(s) become impassable (water depth ≥0.15m).`);
+    } else if (newlyPassableRoads.length > 0) {
+      changeSummaries.push(`${newlyPassableRoads.length} road segment(s) reopen to passable conditions as flood water recedes.`);
+    } else {
+      changeSummaries.push(`Road passability is identical across both scenarios (${evalA.roads.passable} passable, ${evalA.roads.impassable} impassable).`);
+    }
+
+    return {
+      scenarioA: evalA.scenario,
+      scenarioB: evalB.scenario,
+      waterLevelDelta: Math.round((evalB.scenario.waterLevel - evalA.scenario.waterLevel) * 100) / 100,
+      changeSummaries,
+      buildings: {
+        total: evalA.buildings.total,
+        safeA: evalA.buildings.safe,
+        safeB: evalB.buildings.safe,
+        exposedA: evalA.buildings.exposed,
+        exposedB: evalB.buildings.exposed,
+        newlyExposed: newlyExposedBuildings,
+        newlySafe: newlySafeBuildings,
+        remainedExposed: remainedExposedBuildings,
+        remainedSafe: remainedSafeBuildings,
+        unchanged: unchangedBuildings,
+        unknown: unknownBuildings,
+        deltas: buildingDeltas,
+      },
+      medical: {
+        total: evalA.facilities.medical.length,
+        hasVerifiedHospital: false,
+        provenanceNotice: 'All emergency medical records are simulated decision-support markers. No verified municipal emergency hospital exists in source research data (absence does not prove real-world lack of facilities).',
+        safeA: evalA.facilities.medical.filter(m => m.physicalStatus === 'safe').length,
+        safeB: evalB.facilities.medical.filter(m => m.physicalStatus === 'safe').length,
+        exposedA: evalA.facilities.medical.filter(m => m.physicalStatus === 'exposed').length,
+        exposedB: evalB.facilities.medical.filter(m => m.physicalStatus === 'exposed').length,
+        unknownA: evalA.facilities.medical.filter(m => m.physicalStatus === 'unknown').length,
+        unknownB: evalB.facilities.medical.filter(m => m.physicalStatus === 'unknown').length,
+        deltas: medicalDeltas,
+      },
+      shelters: {
+        total: evalA.facilities.shelters.length,
+        safeA: evalA.facilities.shelters.filter(s => s.physicalStatus === 'safe').length,
+        safeB: evalB.facilities.shelters.filter(s => s.physicalStatus === 'safe').length,
+        exposedA: evalA.facilities.shelters.filter(s => s.physicalStatus === 'exposed').length,
+        exposedB: evalB.facilities.shelters.filter(s => s.physicalStatus === 'exposed').length,
+        operationalA: evalA.facilities.shelters.filter(s => s.accessStatus === 'operational').length,
+        operationalB: evalB.facilities.shelters.filter(s => s.accessStatus === 'operational').length,
+        isolatedA: evalA.facilities.shelters.filter(s => s.accessStatus === 'isolated').length,
+        isolatedB: evalB.facilities.shelters.filter(s => s.accessStatus === 'isolated').length,
+        disconnectedA: evalA.facilities.shelters.filter(s => s.accessStatus === 'disconnected').length,
+        disconnectedB: evalB.facilities.shelters.filter(s => s.accessStatus === 'disconnected').length,
+        unknownA: evalA.facilities.shelters.filter(s => s.physicalStatus === 'unknown').length,
+        unknownB: evalB.facilities.shelters.filter(s => s.physicalStatus === 'unknown').length,
+        deltas: shelterDeltas,
+      },
+      roads: {
+        total: evalA.roads.total,
+        passableA: evalA.roads.passable,
+        passableB: evalB.roads.passable,
+        cautionA: evalA.roads.caution,
+        cautionB: evalB.roads.caution,
+        impassableA: evalA.roads.impassable,
+        impassableB: evalB.roads.impassable,
+        unknownA: evalA.roads.unknown,
+        unknownB: evalB.roads.unknown,
+        newlyImpassableCount: newlyImpassableRoads.length,
+        newlyPassableCount: newlyPassableRoads.length,
+        newlyImpassableRoads,
+        newlyPassableRoads,
+      },
+      dataQuality: this.getDataQualityReport(),
+      evaluatedAt: new Date().toISOString(),
+    };
+  }
 }
 

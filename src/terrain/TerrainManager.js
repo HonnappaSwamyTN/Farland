@@ -30,10 +30,10 @@ export class TerrainManager {
    * Load real calibrated DGM1 DEM terrain from processed JSON.
    * If the file cannot be fetched, gracefully falls back to synthetic placeholder.
    * 
-   * @param {string} [demUrl='/data/dernau/dem_height_grid.json']
+   * @param {string} [demUrl='./data/dernau/dem_height_grid.json']
    * @returns {Promise<Object>} Active terrain metadata
    */
-  async loadRealTerrain(demUrl = '/data/dernau/dem_height_grid.json') {
+  async loadRealTerrain(demUrl = './data/dernau/dem_height_grid.json') {
     this.disposeCurrentTerrain();
 
     try {

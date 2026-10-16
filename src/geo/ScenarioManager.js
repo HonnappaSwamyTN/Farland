@@ -788,4 +788,356 @@ export class ScenarioManager {
       console.warn('[ScenarioManager] Popup blocked. Unable to open report window.');
     }
   }
+
+  /**
+   * Generate an RFC 4180 CSV export for a two-scenario comparison.
+   * @param {Object} comp - Comparison report from compareTwoScenariosDetailed
+   * @returns {string} CSV content
+   */
+  generateComparisonCSVReport(comp) {
+    if (!comp) return '';
+    const sA = comp.scenarioA || {};
+    const sB = comp.scenarioB || {};
+    const b = comp.buildings || {};
+    const m = comp.medical || {};
+    const sh = comp.shelters || {};
+    const r = comp.roads || {};
+    const lines = [];
+
+    lines.push('=== HIGHWATER 3D — TWO-SCENARIO COMPARISON REPORT ===');
+    lines.push(`Report Generated,${escapeCSV(new Date().toISOString())}`);
+    lines.push(`Scenario A Name,${escapeCSV(sA.name || 'Scenario A')}`);
+    lines.push(`Scenario A Water Level (MSL),${(sA.waterLevel || 124).toFixed(2)} m`);
+    lines.push(`Scenario B Name,${escapeCSV(sB.name || 'Scenario B')}`);
+    lines.push(`Scenario B Water Level (MSL),${(sB.waterLevel || 124).toFixed(2)} m`);
+    lines.push(`Water Level Delta (B - A),${comp.waterLevelDelta >= 0 ? '+' : ''}${(comp.waterLevelDelta || 0).toFixed(2)} m`);
+    lines.push('');
+
+    // Change Analysis Summaries
+    lines.push('=== EXECUTIVE CHANGE ANALYSIS ===');
+    (comp.changeSummaries || []).forEach(summary => {
+      lines.push(`Summary,${escapeCSV(summary)}`);
+    });
+    lines.push('');
+
+    // High Level KPIs
+    lines.push('=== HIGH-LEVEL IMPACT COMPARISON ===');
+    lines.push('Category,Metric,Scenario A,Scenario B,Net Change (A ➔ B),Description');
+    lines.push(`Buildings,Safe Buildings,${b.safeA ?? 0},${b.safeB ?? 0},${(b.safeB || 0) - (b.safeA || 0)},Structures confirmed zero positive water depth`);
+    lines.push(`Buildings,Flood-Exposed Buildings,${b.exposedA ?? 0},${b.exposedB ?? 0},+${b.newlyExposed ?? 0} new / -${b.newlySafe ?? 0} safe,Structures with water depth > 0.00m`);
+    lines.push(`Buildings,Remained Exposed in Both,${b.remainedExposed ?? 0},${b.remainedExposed ?? 0},N/A,Structures exposed under both scenario stages`);
+    lines.push(`Buildings,Unknown / NoData DEM,${b.unknown ?? 0},${b.unknown ?? 0},0,Structures with missing bare-earth LiDAR`);
+    lines.push(`Shelters,Safe & Operational,${sh.operationalA ?? 0},${sh.operationalB ?? 0},${(sh.operationalB || 0) - (sh.operationalA || 0)},Dry shelter with dry road access`);
+    lines.push(`Shelters,Isolated by Flooded Roads,${sh.isolatedA ?? 0},${sh.isolatedB ?? 0},${(sh.isolatedB || 0) - (sh.isolatedA || 0)},Dry shelter site with submerged access roads`);
+    lines.push(`Shelters,Site Inundated,${sh.exposedA ?? 0},${sh.exposedB ?? 0},${(sh.exposedB || 0) - (sh.exposedA || 0)},Shelter ground site submerged below water`);
+    lines.push(`Medical Facilities,Safe Facilities,${m.safeA ?? 0},${m.safeB ?? 0},${(m.safeB || 0) - (m.safeA || 0)},Simulated medical records confirmed dry`);
+    lines.push(`Medical Facilities,Exposed Facilities,${m.exposedA ?? 0},${m.exposedB ?? 0},${(m.exposedB || 0) - (m.exposedA || 0)},Simulated medical records in flood water`);
+    lines.push(`Road Network,Passable Segments,${r.passableA ?? 0},${r.passableB ?? 0},${(r.passableB || 0) - (r.passableA || 0)},Roads depth < 0.05m`);
+    lines.push(`Road Network,Caution Segments,${r.cautionA ?? 0},${r.cautionB ?? 0},${(r.cautionB || 0) - (r.cautionA || 0)},Roads depth 0.05m - 0.15m`);
+    lines.push(`Road Network,Impassable Segments,${r.impassableA ?? 0},${r.impassableB ?? 0},+${r.newlyImpassableCount ?? 0} new / -${r.newlyPassableCount ?? 0} open,Roads crossing >= 0.15m depth`);
+    lines.push('');
+
+    // Medical Facilities
+    lines.push('=== HOSPITAL & MEDICAL FACILITIES COMPARISON ===');
+    lines.push(`Dataset Notice,${escapeCSV(m.provenanceNotice || 'Simulated facility records.')}`);
+    lines.push('Facility ID,Name,Type,Provenance,Ground Elev (MSL),Depth A (m),Physical Status A,Road Access A,Depth B (m),Physical Status B,Road Access B,Status Transition');
+    (m.deltas || []).forEach(item => {
+      lines.push([
+        escapeCSV(item.id),
+        escapeCSV(item.name),
+        escapeCSV(item.type),
+        escapeCSV(item.provenance || 'simulated'),
+        item.groundElevation !== null ? item.groundElevation.toFixed(2) : 'Unknown',
+        item.depthA !== null ? item.depthA.toFixed(2) : '0.00',
+        escapeCSV(item.physicalA.toUpperCase()),
+        escapeCSV(item.accessA.toUpperCase()),
+        item.depthB !== null ? item.depthB.toFixed(2) : '0.00',
+        escapeCSV(item.physicalB.toUpperCase()),
+        escapeCSV(item.accessB.toUpperCase()),
+        escapeCSV(item.changeDesc)
+      ].join(','));
+    });
+    lines.push('');
+
+    // Shelters
+    lines.push('=== EMERGENCY SHELTERS SAFETY & ACCESSIBILITY ===');
+    lines.push('Shelter ID,Name,Capacity,Provenance,Ground Elev (MSL),Depth A (m),Physical A,Access A,Depth B (m),Physical B,Access B,Status Transition');
+    (sh.deltas || []).forEach(item => {
+      lines.push([
+        escapeCSV(item.id),
+        escapeCSV(item.name),
+        escapeCSV(item.capacity),
+        escapeCSV(item.provenance || 'simulated'),
+        item.groundElevation !== null ? item.groundElevation.toFixed(2) : 'Unknown',
+        item.depthA !== null ? item.depthA.toFixed(2) : '0.00',
+        escapeCSV(item.physicalA.toUpperCase()),
+        escapeCSV(item.accessA.toUpperCase()),
+        item.depthB !== null ? item.depthB.toFixed(2) : '0.00',
+        escapeCSV(item.physicalB.toUpperCase()),
+        escapeCSV(item.accessB.toUpperCase()),
+        escapeCSV(item.changeDesc)
+      ].join(','));
+    });
+    lines.push('');
+
+    // Building Deltas (Changed and Notable Buildings)
+    lines.push('=== BUILDING IMPACT COMPARISON DETAILS ===');
+    lines.push('Building ID,Base Elevation (MSL),Footprint Area (m2),Status Scenario A,Water Depth A (m),Access A,Status Scenario B,Water Depth B (m),Access B,Transition Delta,Depth Change (m)');
+    (b.deltas || []).forEach(item => {
+      lines.push([
+        escapeCSV(item.id),
+        item.baseElevationM !== null && item.baseElevationM !== undefined ? item.baseElevationM.toFixed(2) : 'NoData',
+        item.areaSqM ? Math.round(item.areaSqM) : 'N/A',
+        escapeCSV(item.statusA.toUpperCase()),
+        item.depthA ? item.depthA.toFixed(2) : '0.00',
+        escapeCSV(item.accessA.toUpperCase()),
+        escapeCSV(item.statusB.toUpperCase()),
+        item.depthB ? item.depthB.toFixed(2) : '0.00',
+        escapeCSV(item.accessB.toUpperCase()),
+        escapeCSV(item.deltaType.toUpperCase()),
+        item.deltaDepthM !== null ? item.deltaDepthM.toFixed(2) : '0.00'
+      ].join(','));
+    });
+    lines.push('');
+
+    // Legal Disclaimer
+    lines.push('=== DATA QUALITY & LIMITATIONS DISCLAIMER ===');
+    lines.push('1. Conceptual static terrain immersion model based on Rhineland-Palatinate DGM1 bare-earth LiDAR.');
+    lines.push('2. Depth indicates ground-contact water height; does not establish interior ingress or structural damage.');
+    lines.push('3. All emergency facilities are simulated; no verified municipal emergency hospital exists in source research data.');
+    lines.push('4. Disconnected road components in baseline source data are preserved to prevent false flood failure attribution.');
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Generate a standalone print-friendly HTML report for a two-scenario comparison.
+   * @param {Object} comp - Comparison report from compareTwoScenariosDetailed
+   * @returns {string} HTML document string
+   */
+  generateComparisonHTMLReport(comp) {
+    if (!comp) return '';
+    const sA = comp.scenarioA || {};
+    const sB = comp.scenarioB || {};
+    const b = comp.buildings || {};
+    const m = comp.medical || {};
+    const sh = comp.shelters || {};
+    const r = comp.roads || {};
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HighWater 3D — Two-Scenario Comparison: ${escapeHTML(sA.name)} vs ${escapeHTML(sB.name)}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0b1220; color: #f1f5f9; padding: 24px; font-size: 12px; line-height: 1.5; }
+    h1, h2, h3 { color: #38bdf8; margin-top: 18px; margin-bottom: 8px; }
+    .meta-bar { background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 20px; }
+    .kpi-card { background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 10px 14px; }
+    .kpi-title { font-size: 10px; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
+    .kpi-val { font-size: 18px; font-weight: 700; color: #38bdf8; margin: 4px 0; }
+    .kpi-sub { font-size: 11px; color: #cbd5e1; }
+    .change-banner { background: rgba(56, 189, 248, 0.1); border-left: 3px solid #38bdf8; border-radius: 0 4px 4px 0; padding: 10px 14px; margin-bottom: 20px; }
+    .change-banner ul { margin: 0; padding-left: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
+    th, td { border: 1px solid rgba(255, 255, 255, 0.1); padding: 6px 8px; text-align: left; }
+    th { background: rgba(15, 23, 42, 0.9); color: #38bdf8; }
+    tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
+    .pill { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 9.5px; font-weight: 600; text-transform: uppercase; }
+    .pill-safe { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .pill-exposed { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+    .pill-isolated { background: rgba(245, 158, 11, 0.2); color: #fde047; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .pill-unknown { background: rgba(100, 116, 139, 0.2); color: #cbd5e1; border: 1px solid rgba(100, 116, 139, 0.4); }
+    .disclaimer { font-size: 9px; color: #94a3b8; background: rgba(255, 255, 255, 0.03); padding: 12px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.06); }
+    @media print { body { background: #fff; color: #000; } table, th, td { border-color: #ccc; } th { background: #f0f0f0; color: #000; } }
+  </style>
+</head>
+<body>
+  <h1>🌊 HIGHWATER 3D — DETAILED TWO-SCENARIO COMPARISON</h1>
+  
+  <div class="meta-bar">
+    <div><strong>Scenario A:</strong> ${escapeHTML(sA.name || 'Scenario A')} (${(sA.waterLevel || 124).toFixed(2)}m MSL)</div>
+    <div><strong>Scenario B:</strong> ${escapeHTML(sB.name || 'Scenario B')} (${(sB.waterLevel || 124).toFixed(2)}m MSL)</div>
+    <div><strong>Water Level Delta:</strong> ${comp.waterLevelDelta >= 0 ? '+' : ''}${(comp.waterLevelDelta || 0).toFixed(2)} m</div>
+    <div><strong>Evaluated:</strong> ${new Date(comp.evaluatedAt || Date.now()).toLocaleString()}</div>
+  </div>
+
+  <div class="change-banner">
+    <strong style="color: #38bdf8;">EXECUTIVE CHANGE ANALYSIS:</strong>
+    <ul>
+      ${(comp.changeSummaries || []).map(s => `<li>${escapeHTML(s)}</li>`).join('')}
+    </ul>
+  </div>
+
+  <h2>Key Performance Indicators (Scenario A ➔ Scenario B)</h2>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-title">Buildings Safe</div>
+      <div class="kpi-val">${b.safeA ?? 0} ➔ ${b.safeB ?? 0}</div>
+      <div class="kpi-sub">${b.newlySafe ? `+${b.newlySafe} newly safe` : `${b.newlyExposed} newly exposed`}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Buildings Exposed</div>
+      <div class="kpi-val">${b.exposedA ?? 0} ➔ ${b.exposedB ?? 0}</div>
+      <div class="kpi-sub">${b.remainedExposed ?? 0} remain exposed in both</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Shelters Operational</div>
+      <div class="kpi-val">${sh.operationalA ?? 0} / ${sh.total ?? 3} ➔ ${sh.operationalB ?? 0} / ${sh.total ?? 3}</div>
+      <div class="kpi-sub">${sh.isolatedB ?? 0} isolated by flooded roads</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-title">Roads Impassable</div>
+      <div class="kpi-val">${r.impassableA ?? 0} ➔ ${r.impassableB ?? 0}</div>
+      <div class="kpi-sub">${r.newlyImpassableCount ? `+${r.newlyImpassableCount} newly blocked` : '0 newly blocked'}</div>
+    </div>
+  </div>
+
+  <h2>Hospital & Medical Facilities</h2>
+  <p style="color: #f59e0b; font-size: 10px;">⚠️ ${escapeHTML(m.provenanceNotice || '')}</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Facility ID</th>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Ground Elev</th>
+        <th>Scenario A Physical</th>
+        <th>Scenario A Road Access</th>
+        <th>Scenario B Physical</th>
+        <th>Scenario B Road Access</th>
+        <th>Change Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${(m.deltas || []).map(item => `
+        <tr>
+          <td>${escapeHTML(item.id)}</td>
+          <td><strong>${escapeHTML(item.name)}</strong></td>
+          <td>${escapeHTML(item.type)}</td>
+          <td>${item.groundElevation !== null ? item.groundElevation.toFixed(1) + 'm' : 'Unknown'}</td>
+          <td><span class="pill pill-${item.physicalA}">${escapeHTML(item.physicalA)}</span></td>
+          <td>${escapeHTML(item.accessA)}</td>
+          <td><span class="pill pill-${item.physicalB}">${escapeHTML(item.physicalB)}</span></td>
+          <td>${escapeHTML(item.accessB)}</td>
+          <td>${escapeHTML(item.changeDesc)}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <h2>Emergency Shelters Safety & Availability</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Shelter ID</th>
+        <th>Name</th>
+        <th>Capacity</th>
+        <th>Ground Elev</th>
+        <th>Scenario A Physical</th>
+        <th>Scenario A Road Access</th>
+        <th>Scenario B Physical</th>
+        <th>Scenario B Road Access</th>
+        <th>Transition Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${(sh.deltas || []).map(item => `
+        <tr>
+          <td>${escapeHTML(item.id)}</td>
+          <td><strong>${escapeHTML(item.name)}</strong></td>
+          <td>${escapeHTML(item.capacity)}</td>
+          <td>${item.groundElevation !== null ? item.groundElevation.toFixed(1) + 'm' : 'Unknown'}</td>
+          <td><span class="pill pill-${item.physicalA}">${escapeHTML(item.physicalA)}</span></td>
+          <td>${escapeHTML(item.accessA)}</td>
+          <td><span class="pill pill-${item.physicalB}">${escapeHTML(item.physicalB)}</span></td>
+          <td>${escapeHTML(item.accessB)}</td>
+          <td>${escapeHTML(item.changeDesc)}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <h2>Road Network Passability Summary</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Classification</th>
+        <th>Scenario A Segments</th>
+        <th>Scenario B Segments</th>
+        <th>Net Change</th>
+        <th>Safety Criteria</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Passable</td>
+        <td>${r.passableA ?? 0}</td>
+        <td>${r.passableB ?? 0}</td>
+        <td>${(r.passableB || 0) - (r.passableA || 0)}</td>
+        <td>Depth &lt; 0.05m</td>
+      </tr>
+      <tr>
+        <td>Caution</td>
+        <td>${r.cautionA ?? 0}</td>
+        <td>${r.cautionB ?? 0}</td>
+        <td>${(r.cautionB || 0) - (r.cautionA || 0)}</td>
+        <td>Depth 0.05m - 0.15m</td>
+      </tr>
+      <tr>
+        <td>Impassable</td>
+        <td>${r.impassableA ?? 0}</td>
+        <td>${r.impassableB ?? 0}</td>
+        <td>${(r.impassableB || 0) - (r.impassableA || 0)}</td>
+        <td>Depth &ge; 0.15m</td>
+      </tr>
+      <tr>
+        <td>Unknown DEM</td>
+        <td>${r.unknownA ?? 0}</td>
+        <td>${r.unknownB ?? 0}</td>
+        <td>0</td>
+        <td>Missing elevation (treated as impassable)</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Building Transition Details (Sample)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Building ID</th>
+        <th>Ground Elev</th>
+        <th>Scenario A Status</th>
+        <th>Scenario A Depth</th>
+        <th>Scenario B Status</th>
+        <th>Scenario B Depth</th>
+        <th>Transition Type</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${(b.deltas || []).filter(item => item.deltaType !== 'remained_safe').slice(0, 50).map(item => `
+        <tr>
+          <td>${escapeHTML(item.id)}</td>
+          <td>${item.baseElevationM !== null && item.baseElevationM !== undefined ? item.baseElevationM.toFixed(1) + 'm' : 'NoData'}</td>
+          <td>${escapeHTML(item.statusA)}</td>
+          <td>${item.depthA ? item.depthA.toFixed(2) + 'm' : '0.00m'}</td>
+          <td>${escapeHTML(item.statusB)}</td>
+          <td>${item.depthB ? item.depthB.toFixed(2) + 'm' : '0.00m'}</td>
+          <td><span class="pill pill-${item.deltaType === 'newly_exposed' ? 'exposed' : item.deltaType === 'newly_safe' ? 'safe' : 'unknown'}">${escapeHTML(item.deltaType)}</span></td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <div class="disclaimer">
+    <strong>DATA INTEGRITY & METHODOLOGICAL LIMITATIONS:</strong><br>
+    - Conceptual static elevation threshold analysis based on Rhineland-Palatinate DGM1 LiDAR.<br>
+    - Buildings are defined as safe ONLY when confirmed zero flood exposure.<br>
+    - All emergency facilities are simulated; no verified municipal emergency hospital exists in source research data.<br>
+    - Pre-existing road network disconnections are preserved to prevent false flood failure attribution.
+  </div>
+</body>
+</html>`;
+  }
 }

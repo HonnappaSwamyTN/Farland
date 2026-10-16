@@ -1,0 +1,15 @@
+# Dependencies and build artifacts
+node_modules
+dist
+.vercel
+.git
+
+# Raw GIS rasters (only public/ processed data needed)
+data/source
+
+# Scratch and logs
+scratch
+*.log
+
+# Unit and integration test files
+test_*.mjs

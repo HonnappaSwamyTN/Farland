@@ -40,7 +40,7 @@ export class FloodExtentLayer {
    * Load historical flood extent GeoJSON.
    * @param {string} url
    */
-  async load(url = '/data/dernau/flood_extent.geojson') {
+  async load(url = './data/dernau/flood_extent.geojson') {
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`FloodExtentLayer: Failed to fetch GeoJSON from ${url} (${res.status})`);

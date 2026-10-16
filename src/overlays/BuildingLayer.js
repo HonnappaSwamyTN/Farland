@@ -58,7 +58,7 @@ export class BuildingLayer {
    * Load and construct 3D buildings from GeoJSON.
    * @param {string} url
    */
-  async load(url = '/data/dernau/buildings_exposed.geojson') {
+  async load(url = './data/dernau/buildings_exposed.geojson') {
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`BuildingLayer: Failed to fetch GeoJSON from ${url} (${res.status})`);

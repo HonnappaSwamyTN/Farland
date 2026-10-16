@@ -38,7 +38,7 @@ export class FacilityLayer {
    * Load facilities GeoJSON.
    * @param {string} url
    */
-  async load(url = '/data/dernau/facilities.geojson') {
+  async load(url = './data/dernau/facilities.geojson') {
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`FacilityLayer: Failed to fetch facilities GeoJSON from ${url} (${res.status})`);

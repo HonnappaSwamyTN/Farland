@@ -11,8 +11,8 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/index-VsiI3pr2.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BsfYMsWa.css">
+    <script type="module" crossorigin src="./assets/index-CU6Oy1GR.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CkbCmIWl.css">
   </head>
   <body>
     <!-- App Shell -->
@@ -81,83 +81,117 @@
           <button class="notice-close" id="btn-close-notice" title="Dismiss notice">✕</button>
         </div>
 
-        <!-- Telemetry & Camera HUD (Top Left) -->
-        <div class="hud-panel hud-telemetry">
-          <div class="panel-header">
-            <span class="panel-title">VIEWPORT TELEMETRY</span>
-            <span class="hud-tag" id="fps-counter">60 FPS</span>
+        <!-- Coordinated Left-Side HUD Stack (Telemetry + Scenario Comparison) -->
+        <div class="hud-left-stack" id="hud-left-stack">
+          <!-- Telemetry & Camera HUD (Top Left) -->
+          <div class="hud-panel hud-telemetry">
+            <div class="panel-header">
+              <span class="panel-title">VIEWPORT TELEMETRY</span>
+              <span class="hud-tag" id="fps-counter">60 FPS</span>
+            </div>
+            <div class="telemetry-grid font-mono">
+              <div class="telem-row">
+                <span class="t-label">CAM POS (X, Y, Z):</span>
+                <span class="t-val" id="cam-pos">0m, 850m, 1350m</span>
+              </div>
+              <div class="telem-row">
+                <span class="t-label">TARGET (X, Y, Z):</span>
+                <span class="t-val" id="target-pos">0m, 140m, 0m</span>
+              </div>
+              <div class="telem-row">
+                <span class="t-label">CAM ALTITUDE:</span>
+                <span class="t-val" id="cam-alt">850.0 m</span>
+              </div>
+              <div class="telem-row">
+                <span class="t-label">PITCH / YAW:</span>
+                <span class="t-val" id="cam-angles">-32.4° / 0.0°</span>
+              </div>
+              <div class="telem-row">
+                <span class="t-label">CURSOR SURFACE:</span>
+                <span class="t-val highlight" id="cursor-pos">Hovering over terrain...</span>
+              </div>
+            </div>
           </div>
-          <div class="telemetry-grid font-mono">
-            <div class="telem-row">
-              <span class="t-label">CAM POS (X, Y, Z):</span>
-              <span class="t-val" id="cam-pos">0m, 850m, 1350m</span>
+
+          <!-- Phase 4: Scenario Comparison HUD (Below Telemetry in Stack) -->
+          <div class="hud-panel hud-scenario-diff font-mono" id="hud-scenario-diff">
+            <div class="panel-header">
+              <span class="panel-title">SCENARIO COMPARISON</span>
+              <span class="hud-tag" id="scenario-baseline-tag">BASE: 124.0m</span>
             </div>
-            <div class="telem-row">
-              <span class="t-label">TARGET (X, Y, Z):</span>
-              <span class="t-val" id="target-pos">0m, 140m, 0m</span>
+
+            <!-- Scenario Comparison Two-Scenario Selector Section -->
+            <div class="scenario-compare-quick font-mono">
+              <div class="compare-row-inputs">
+                <div class="compare-input-group">
+                  <label for="hud-select-scen-a" class="compare-label">SCENARIO A:</label>
+                  <select class="scenario-select" id="hud-select-scen-a" title="Select Scenario A"></select>
+                </div>
+                <div class="compare-input-group">
+                  <label for="hud-select-scen-b" class="compare-label">SCENARIO B:</label>
+                  <select class="scenario-select" id="hud-select-scen-b" title="Select Scenario B"></select>
+                </div>
+              </div>
+              <div class="compare-validation-msg hidden" id="hud-compare-validation">
+                ⚠️ Cannot compare a scenario with itself. Please select two distinct scenarios.
+              </div>
+              <button class="btn-scenario-compare-full" id="btn-hud-compare-scenarios" title="Open detailed side-by-side scenario comparison">
+                ⚖️ Compare Scenarios
+              </button>
             </div>
-            <div class="telem-row">
-              <span class="t-label">CAM ALTITUDE:</span>
-              <span class="t-val" id="cam-alt">850.0 m</span>
+
+            <div class="scenario-diff-grid">
+              <div class="diff-metric-card">
+                <span class="diff-metric-label">NEWLY AFFECTED:</span>
+                <span class="diff-metric-val" id="diff-new-blds">0 (0.0%)</span>
+              </div>
+              <div class="diff-metric-card">
+                <span class="diff-metric-label">ROUTE LOST:</span>
+                <span class="diff-metric-val text-rose font-bold" id="diff-route-lost">0 bldgs</span>
+              </div>
+              <div class="diff-metric-card">
+                <span class="diff-metric-label">NEW IMPASSABLE:</span>
+                <span class="diff-metric-val" id="diff-new-roads">0 (0.0%)</span>
+              </div>
+              <div class="diff-metric-card">
+                <span class="diff-metric-label">ISOLATED SHELTER:</span>
+                <span class="diff-metric-val" id="diff-isolated-shelters">0 / 3</span>
+              </div>
             </div>
-            <div class="telem-row">
-              <span class="t-label">PITCH / YAW:</span>
-              <span class="t-val" id="cam-angles">-32.4° / 0.0°</span>
-            </div>
-            <div class="telem-row">
-              <span class="t-label">CURSOR SURFACE:</span>
-              <span class="t-val highlight" id="cursor-pos">Hovering over terrain...</span>
+            <div class="scenario-actions">
+              <button class="hud-pill-btn" id="btn-set-baseline" title="Set current water level as comparison baseline">📌 Set Baseline</button>
+              <button class="hud-pill-btn active" id="btn-toggle-access-lost" title="Toggle 3D visual warning halos on buildings that lost road evacuation access">⚠️ Access Rings: ON</button>
+              <button class="hud-pill-btn" id="btn-toggle-risk-panel" title="Toggle Building Risk Ranking list">📊 Risk Ranking</button>
+              <button class="hud-pill-btn" id="btn-open-scenarios" title="Manage saved scenarios and compare custom water levels">📁 Scenarios</button>
+              <button class="hud-pill-btn" id="btn-pill-integrity" title="View transparent Data Quality & Uncertainty Audit">🛡️ Quality</button>
+              <button class="hud-pill-btn" id="btn-export-report" title="Generate downloadable CSV or print-friendly scenario report">📄 Export Report</button>
             </div>
           </div>
         </div>
 
-        <!-- Phase 4: Scenario Comparison HUD (Top Left, below Telemetry) -->
-        <div class="hud-panel hud-scenario-diff font-mono" id="hud-scenario-diff">
-          <div class="panel-header">
-            <span class="panel-title">SCENARIO COMPARISON</span>
-            <span class="hud-tag" id="scenario-baseline-tag">BASE: 124.0m</span>
+        <!-- Feature Detail Panel (Click-to-View Details) -->
+        <div class="hud-panel hud-feature-details hidden" id="hud-feature-details">
+          <div class="panel-header detail-header">
+            <div class="detail-header-info">
+              <span class="panel-title" id="detail-panel-title">FEATURE DETAILS</span>
+              <span class="status-pill info font-mono" id="detail-panel-badge">SELECTED</span>
+            </div>
+            <button class="btn-close-sm" id="btn-close-details" title="Close details panel (or click empty map space)">✕</button>
           </div>
-          <div class="scenario-diff-grid">
-            <div class="diff-metric-card">
-              <span class="diff-metric-label">NEWLY AFFECTED:</span>
-              <span class="diff-metric-val" id="diff-new-blds">0 (0.0%)</span>
-            </div>
-            <div class="diff-metric-card">
-              <span class="diff-metric-label">ROUTE LOST:</span>
-              <span class="diff-metric-val text-rose font-bold" id="diff-route-lost">0 bldgs</span>
-            </div>
-            <div class="diff-metric-card">
-              <span class="diff-metric-label">NEW IMPASSABLE:</span>
-              <span class="diff-metric-val" id="diff-new-roads">0 (0.0%)</span>
-            </div>
-            <div class="diff-metric-card">
-              <span class="diff-metric-label">ISOLATED SHELTER:</span>
-              <span class="diff-metric-val" id="diff-isolated-shelters">0 / 3</span>
-            </div>
-          </div>
-          <div class="scenario-actions">
-            <button class="hud-pill-btn" id="btn-set-baseline" title="Set current water level as comparison baseline">📌 Set Baseline</button>
-            <button class="hud-pill-btn active" id="btn-toggle-access-lost" title="Toggle 3D visual warning halos on buildings that lost road evacuation access">⚠️ Access Rings: ON</button>
-            <button class="hud-pill-btn" id="btn-toggle-risk-panel" title="Toggle Building Risk Ranking list">📊 Risk Ranking</button>
-            <button class="hud-pill-btn" id="btn-open-scenarios" title="Manage saved scenarios and compare custom water levels">📁 Scenarios</button>
-            <button class="hud-pill-btn" id="btn-pill-integrity" title="View transparent Data Quality & Uncertainty Audit">🛡️ Quality</button>
-            <button class="hud-pill-btn" id="btn-export-report" title="Generate downloadable CSV or print-friendly scenario report">📄 Export Report</button>
+          <div class="detail-panel-body" id="detail-panel-body">
+            <!-- Dynamic feature details rendered on click -->
           </div>
         </div>
 
-        <!-- Feature Inspection HUD (Top Right) -->
-        <div class="hud-panel hud-inspector" id="hud-inspector">
-          <div class="panel-header">
-            <span class="panel-title">FEATURE INSPECTOR</span>
-            <span class="status-pill info" id="inspect-tag">HOVER OVER OBJECT</span>
+        <!-- Inundation Depth & Access Map Legend -->
+        <div class="hud-panel hud-legend-panel font-mono" id="hud-legend-panel">
+          <div class="panel-header legend-panel-header" id="legend-panel-header">
+            <div class="legend-header-info">
+              <span class="panel-title">MAP LEGEND</span>
+              <span class="legend-count-pill" id="legend-count-pill">8 CATEGORIES</span>
+            </div>
+            <button class="btn-legend-collapse" id="btn-toggle-legend" title="Toggle legend view">▾</button>
           </div>
-          <div class="inspector-content" id="inspect-content">
-            <p class="inspect-placeholder font-mono text-muted">
-              Hover over a 3D building, road segment, or emergency facility pin to inspect verified attributes.
-            </p>
-          </div>
-          <!-- Inundation Depth & Access Legend (Milestone 6 & 7) -->
-          <!-- Inundation Depth & Access Legend (Phase 1 Road Classification) -->
           <div class="hud-legend font-mono" id="hud-legend">
             <div class="legend-row">
               <span class="legend-title">DEPTH:</span>
@@ -262,13 +296,22 @@
 
           <!-- Compare Two Scenarios Section -->
           <div class="scenario-compare-section font-mono">
-            <div class="scenario-section-subtitle">COMPARE SAVED SCENARIOS:</div>
+            <div class="scenario-section-subtitle">COMPARE SCENARIOS:</div>
             <div class="compare-select-row">
-              <select class="scenario-select" id="select-compare-baseline" title="Select baseline scenario"></select>
+              <div class="compare-input-group">
+                <label for="select-compare-baseline" class="compare-label">SCENARIO A:</label>
+                <select class="scenario-select" id="select-compare-baseline" title="Select Scenario A"></select>
+              </div>
               <span class="compare-arrow">➔</span>
-              <select class="scenario-select" id="select-compare-target" title="Select comparison target scenario"></select>
-              <button class="btn-scenario-compare" id="btn-execute-compare" title="Run comparative reachability and exposure analysis">⚖️ Diff</button>
+              <div class="compare-input-group">
+                <label for="select-compare-target" class="compare-label">SCENARIO B:</label>
+                <select class="scenario-select" id="select-compare-target" title="Select Scenario B"></select>
+              </div>
             </div>
+            <div class="compare-validation-msg hidden" id="panel-compare-validation">
+              ⚠️ Cannot compare a scenario with itself. Please select two distinct scenarios.
+            </div>
+            <button class="btn-scenario-compare full-width" id="btn-execute-compare" title="Run comparative reachability and exposure analysis">⚖️ Compare Scenarios</button>
           </div>
 
           <!-- Scenario Export Actions Section -->
@@ -327,27 +370,61 @@
           </div>
         </div>
 
-        <!-- Compass & Coordinate Reference Overlay (Bottom Right) -->
+        <!-- Compass Reference Overlay (Bottom Right) -->
         <div class="hud-compass-widget">
-          <div class="compass-disc" id="compass-disc">
+          <div class="compass-disc" id="compass-disc" title="Current camera compass orientation">
             <span class="compass-n">N</span>
             <span class="compass-e">E</span>
             <span class="compass-s">S</span>
             <span class="compass-w">W</span>
             <div class="compass-needle" id="compass-needle"></div>
           </div>
-          <div class="scale-bar font-mono">
-            <div class="scale-ruler"></div>
-            <span class="scale-label">500 m</span>
-          </div>
         </div>
       </main>
 
-      <!-- Bottom Control Dock: Engineering GIS Tools & Layer Toggles -->
+      <!-- Bottom Control Dock: Engineering GIS Tools & Flood Simulation Surface -->
       <footer class="bottom-dock">
-        <!-- Left Panel: Geographic Layers & Camera Presets -->
-        <div class="dock-panel-left">
-          <div class="dock-subgroup">
+        <!-- Level 1: Simulation Stage, Impact Summary & Water Controls -->
+        <div class="dock-level-sim">
+          <div class="sim-brand-cluster">
+            <span class="sim-title">TERRAIN-AWARE FLOOD IMPACT</span>
+            <span class="water-disclaimer-tag" title="Conceptual DEM-based elevation threshold model; not a calibrated hydrodynamic simulation">
+              CONCEPTUAL (NOT FORECAST)
+            </span>
+            <div class="impact-counter-badge font-mono" id="impact-badge" title="Dynamic feature exposure calculated for current water surface elevation">
+              <span class="impact-label">IMPACT:</span>
+              <span class="impact-values" id="impact-stats-text">0 / 759 Bld | 0 / 117 Rds | 0 / 6 Fac</span>
+            </div>
+          </div>
+
+          <div class="sim-slider-cluster">
+            <span class="slider-label font-mono">WATER ELEV:</span>
+            <input
+              type="range"
+              class="water-slider"
+              id="water-level-slider"
+              min="120.0"
+              max="155.0"
+              step="0.25"
+              value="124.0"
+              title="Adjust water surface elevation in meters above DHHN2016 datum (120.0m - 155.0m)"
+            />
+            <span class="water-readout font-mono" id="water-level-val">124.00 m</span>
+          </div>
+
+          <div class="sim-btn-cluster">
+            <button class="sim-btn font-mono" id="btn-water-play" title="Gradually raise water level (+1.5 m/s)">▶ Rise</button>
+            <button class="sim-btn font-mono" id="btn-water-reset" title="Reset water level to baseline river stage (124.0m)">⏮ Reset</button>
+            <button class="sim-btn font-mono active" id="btn-toggle-connectivity" title="Toggle river thalweg connected flood fill vs unconstrained elevation slicing">🌊 Connected: ON</button>
+            <button class="sim-btn font-mono" id="btn-toggle-profile" title="Toggle between Planar (horizontal) and Slope-Aware (valley thalweg gradient) water profile">📐 Profile: Planar</button>
+            <button class="sim-btn font-mono active" id="btn-toggle-depth" title="Toggle dynamic building depth color shading vs historical SpaceNet 8 status">🎨 Depth: ON</button>
+            <button class="sim-btn font-mono active" id="btn-toggle-passability" title="Toggle dynamic road passability color classification vs historical SpaceNet 8 status">🛣️ Passability: ON</button>
+          </div>
+        </div>
+
+        <!-- Level 2: Engineering GIS Toolstrip (Layers, Viewport, Tools) -->
+        <div class="dock-level-tools">
+          <div class="dock-subgroup cluster-layers">
             <span class="dock-subgroup-title">LAYERS</span>
             <div class="dock-buttons">
               <button class="dock-btn active" id="btn-toggle-blds" title="Toggle 759 building footprints (SpaceNet 8 dataset)">
@@ -380,7 +457,10 @@
               </button>
             </div>
           </div>
-          <div class="dock-subgroup">
+
+          <div class="dock-vdivider"></div>
+
+          <div class="dock-subgroup cluster-viewport">
             <span class="dock-subgroup-title">VIEWPORT</span>
             <div class="dock-buttons">
               <button class="dock-btn" id="btn-view-iso" title="Perspective 3D Orbit View">
@@ -400,8 +480,11 @@
               </button>
             </div>
           </div>
-          <div class="dock-subgroup">
-            <span class="dock-subgroup-title">ROUTING</span>
+
+          <div class="dock-vdivider"></div>
+
+          <div class="dock-subgroup cluster-tools">
+            <span class="dock-subgroup-title">ROUTING &amp; TOOLS</span>
             <div class="dock-buttons">
               <button class="dock-btn" id="btn-route-shelter" title="Evacuate from selected origin (or default center) to nearest reachable shelter (Purple line)">
                 <span class="btn-dot shelter-route-dot"></span>
@@ -433,45 +516,6 @@
                 <span class="btn-dot" style="background:#a855f7;"></span>
                 <span>🛡️ Quality</span>
               </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Right Panel: Simulation Stage & Impact Analysis -->
-        <div class="dock-panel-right water-control-group">
-          <div class="dock-group-header">
-            <div class="water-title-wrap">
-              <span class="dock-group-title">TERRAIN-AWARE FLOOD IMPACT</span>
-              <span class="water-disclaimer-tag" title="Conceptual DEM-based elevation threshold model; not a calibrated hydrodynamic simulation">
-                CONCEPTUAL (NOT FORECAST)
-              </span>
-            </div>
-            <div class="impact-counter-badge font-mono" id="impact-badge" title="Dynamic feature exposure calculated for current water surface elevation">
-              <span class="impact-label">INUNDATION IMPACT:</span>
-              <span class="impact-values" id="impact-stats-text">0 / 759 Bld | 0 / 117 Rds | 0 / 6 Fac</span>
-            </div>
-          </div>
-
-          <div class="water-slider-row">
-            <span class="slider-label font-mono">WATER ELEV:</span>
-            <input
-              type="range"
-              class="water-slider"
-              id="water-level-slider"
-              min="120.0"
-              max="155.0"
-              step="0.25"
-              value="124.0"
-              title="Adjust water surface elevation in meters above DHHN2016 datum (120.0m - 155.0m)"
-            />
-            <span class="water-readout font-mono" id="water-level-val">124.00 m</span>
-            <div class="water-btn-group">
-              <button class="sim-btn font-mono" id="btn-water-play" title="Gradually raise water level (+1.5 m/s)">▶ Rise</button>
-              <button class="sim-btn font-mono" id="btn-water-reset" title="Reset water level to baseline river stage (124.0m)">⏮ Reset</button>
-              <button class="sim-btn font-mono active" id="btn-toggle-connectivity" title="Toggle river thalweg connected flood fill vs unconstrained elevation slicing">🌊 Connected: ON</button>
-              <button class="sim-btn font-mono" id="btn-toggle-profile" title="Toggle between Planar (horizontal) and Slope-Aware (valley thalweg gradient) water profile">📐 Profile: Planar</button>
-              <button class="sim-btn font-mono active" id="btn-toggle-depth" title="Toggle dynamic building depth color shading vs historical SpaceNet 8 status">🎨 Depth: ON</button>
-              <button class="sim-btn font-mono active" id="btn-toggle-passability" title="Toggle dynamic road passability color classification vs historical SpaceNet 8 status">🛣️ Passability: ON</button>
             </div>
           </div>
         </div>
@@ -521,6 +565,47 @@
 
           <div class="export-footer text-muted">
             ⚠️ Conceptual decision-support indicator only. Ground-contact depth does not establish interior flooding, structural damage, or calibrated life-safety probability. All emergency facilities are simulated and unverified.
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 7: Detailed Two-Scenario Comparison Modal Overlay -->
+      <div class="comparison-modal-overlay hidden" id="modal-scenario-comparison" role="dialog" aria-modal="true" aria-labelledby="comparison-modal-title">
+        <div class="comparison-modal-dialog font-mono">
+          <!-- Header -->
+          <div class="comparison-modal-header">
+            <div class="comparison-modal-title-group">
+              <div class="comparison-modal-eyebrow">HIGHWATER 3D · DATA-DRIVEN ANALYSIS</div>
+              <h2 class="comparison-modal-title" id="comparison-modal-title">DETAILED SCENARIO COMPARISON</h2>
+              <div class="comparison-scenarios-badge" id="modal-scenarios-badge">
+                <span class="scen-badge-a" id="modal-badge-scen-a">Scenario A: 124.0m MSL</span>
+                <span class="scen-badge-vs">➔</span>
+                <span class="scen-badge-b" id="modal-badge-scen-b">Scenario B: 128.5m MSL</span>
+                <span class="scen-badge-delta" id="modal-badge-delta">+4.50m Stage</span>
+              </div>
+            </div>
+            <div class="comparison-modal-header-actions">
+              <button class="btn-export-download" id="btn-modal-export-csv" title="Download detailed comparison as RFC 4180 CSV">
+                📥 Export CSV
+              </button>
+              <button class="btn-export-print" id="btn-modal-export-html" title="Open print-friendly HTML comparison report">
+                📄 Export HTML / Print
+              </button>
+              <button class="btn-close-sm" id="btn-close-comparison-modal" title="Close detailed comparison">✕</button>
+            </div>
+          </div>
+
+          <!-- Internally Scrollable Body -->
+          <div class="comparison-modal-body" id="comparison-modal-body">
+            <!-- Dynamic comparison content rendered by UIController -->
+          </div>
+
+          <!-- Sticky Footer -->
+          <div class="comparison-modal-footer">
+            <div class="comparison-footer-disclaimer text-muted">
+              ⚠️ Conceptual static terrain immersion model (DGM1 LiDAR). Not a calibrated hydrodynamic forecast. Safe = confirmed zero positive water depth with valid elevation data.
+            </div>
+            <button class="btn-close-comparison-footer" id="btn-footer-close-comparison">Close</button>
           </div>
         </div>
       </div>
